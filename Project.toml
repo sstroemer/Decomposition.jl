@@ -1,7 +1,11 @@
 name = "Decomposition"
 uuid = "d4dfb27b-861c-4425-ac1a-a7246d2447ee"
 authors = ["sstroemer <stefan.stroemer@gmail.com>"]
-version = "1.0.0-DEV"
+version = "0.1.0-DEV"
+
+[deps]
+HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 
 [compat]
 julia = "1.9"
