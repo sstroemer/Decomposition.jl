@@ -27,3 +27,6 @@ Manifest.toml
 # Dev Files.
 dev.jl
 test.lp
+
+# Temporary files.
+tmp/
