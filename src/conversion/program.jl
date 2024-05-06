@@ -49,7 +49,12 @@ to_program(node::AbstractProgramNode) = node
 function to_program(node::AbstractModelNode)
     @debug "to_program(::AbstractModelNode)" node
 
-    JuMP._is_lp(node.model) && (return _to_program_lp(node))
+    return _to_program_lp(node)
 
-    @critical "`to_program` not implemented for model type, currently supported: LP"
+    # TODO: _is_lp does not account for: range constraints (ok), QPs (not ok), QCPs (not ok), ...
+    #       Code as it was planned:
+    # 
+    # JuMP._is_lp(node.model) && (return _to_program_lp(node))
+    #
+    # @critical "`to_program` not implemented for model type, currently supported: LP"
 end
