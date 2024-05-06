@@ -17,13 +17,15 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{U
     siblings = isnothing(node.parent) ? [] : node.parent.children
     if depth == 0
         println(node)
-        println("╤════════════════════════════════════════════")
-    elseif !isempty(siblings)
-        order = sort([c.id for c in siblings])
-        char = node.id == order[end] ? "╰" : "├"
-        println("$(repeat(" ", (depth-1) * 3))$(char)─ $(node)")
+        println("╤══════════════")
+    elseif length(siblings) > 1
+        prefix = node.id == siblings[end].id ? "╰" : "├"
+        infix = isempty(node.children) ? "─" : "┬"
+        println("$(repeat(" ", (depth-1) * 2))$(prefix)─$(infix)─$(node)")
     else
-        println("$(repeat(" ", (depth-1) * 3))$(char)─ $(node)")
+        prefix = "╰"
+        infix = isempty(node.children) ? "─" : "┬"
+        println("$(repeat(" ", (depth-1) * 2))$(prefix)─$(infix)─ $(node)")
     end
 
     push!(visited, node.id)

@@ -16,7 +16,7 @@ function to_model(node::NodeLP)
     return Node{NodeModel}(node, model=model)
 end
 
-function to_model(node::NodeFile)
-    @debug "to_model(::NodeFile)" node
+function to_model(node::AbstractFileNode)
+    @debug "to_model(::AbstractFileNode)" node
     return Node{NodeModel}(node, model=JuMP.read_from_file(node.filename))
 end
