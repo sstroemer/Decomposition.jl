@@ -10,5 +10,5 @@ function _presolve_papilo(node::AbstractFileNode)
 
     PaPILO.presolve_write_from_file(filename_full, filename_postsolve, filename_reduced)
 
-    return Node{NodePresolved}(node; filename=filename_reduced, filename_original=filename_full, filename_postsolve=filename_postsolve)
+    return Node{FileNodePresolved}(node; filename=filename_reduced, filename_original=filename_full, filename_postsolve=filename_postsolve)
 end

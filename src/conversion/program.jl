@@ -41,7 +41,7 @@ function _to_program_lp(node::AbstractModelNode)
     end
 
     # TODO: retain names
-    return Node{NodeLP}(node; program=ProgramLP(A, G, b, c, d, h, lb, size(A, 1), size(G, 1), size(A, 1) + size(G, 1), size(A, 2)))
+    return Node{ProgramNodeLP}(node; program=ProgramLP(A, G, b, c, d, h, lb, size(A, 1), size(G, 1), size(A, 1) + size(G, 1), size(A, 2)))
 end
 
 to_program(node::AbstractNode) = to_program(to_model(node))

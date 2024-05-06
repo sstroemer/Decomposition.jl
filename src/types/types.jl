@@ -47,7 +47,7 @@ function Base.getproperty(node::AbstractNode, field::Symbol)
     @critical "Trying to access unknown field" node = getfield(node, :id) field
 end
 
-_to_str(node::AbstractNode) = "$(string(nameof(typeof(node)))[5:end]) [$(string(node.id)[1:8])]"
+_to_str(node::AbstractNode) = "$(replace(string(nameof(typeof(node))), "Node" => "")) [$(string(node.id)[1:8])]"
 Base.show(io::IO, node::AbstractNode) = print(io, _to_str(node))
 Base.show(io::IO, node::AbstractFileNode) = print(io, "$(_to_str(node)): $(node.filename)")
 Base.show(io::IO, node::AbstractModelNode) = print(io, "$(_to_str(node)): $(JuMP.num_variables(node.model)) vars, and $(JuMP.num_constraints(node.model; count_variable_in_set_constraints = false)) cons")

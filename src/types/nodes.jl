@@ -13,7 +13,7 @@ function Node{NodeRoot}()
     return node
 end
 
-@kwdef struct NodePresolved <: AbstractFileNode
+@kwdef struct FileNodePresolved <: AbstractFileNode
     id::UUIDs.UUID
     parent::AbstractNode
     children::Vector{AbstractNode}
@@ -23,7 +23,7 @@ end
     filename_postsolve::String
 end
 
-@kwdef struct NodeFile <: AbstractFileNode
+@kwdef struct FileNodeGeneral <: AbstractFileNode
     id::UUIDs.UUID
     parent::AbstractNode
     children::Vector{AbstractNode}
@@ -31,17 +31,17 @@ end
     filename::String
 end
 
-@kwdef struct NodeModel <: AbstractModelNode
+@kwdef struct ModelNodeGeneral <: AbstractModelNode
     id::UUIDs.UUID
     parent::AbstractNode
     children::Vector{AbstractNode}
     model::AbstractModel
 end
 
-@kwdef struct NodeLP <: AbstractProgramNode
+@kwdef struct ProgramNodeLP <: AbstractProgramNode
     id::UUIDs.UUID
     parent::AbstractNode
     children::Vector{AbstractNode}
     program::ProgramLP
 end
-Base.show(io::IO, node::NodeLP) = print(io, "$(_to_str(node)): $(node.program.m) × $(node.program.n) (nz = $(length(node.program.A.nzval) + length(node.program.A.nzval)))")
+Base.show(io::IO, node::ProgramNodeLP) = print(io, "$(_to_str(node)): $(node.program.m) × $(node.program.n) (nz = $(length(node.program.A.nzval) + length(node.program.A.nzval)))")
