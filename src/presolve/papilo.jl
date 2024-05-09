@@ -60,6 +60,8 @@ end
 
 function _resolve_ranged_constraints!(model::JuMP.Model)
     ranged_constraints = JuMP.all_constraints(model, JuMP.VariableRef, MOI.Interval{Float64})
+    isempty(ranged_constraints) || @warn "Converting ranged constraints to bounds, to 'fix' dualization"
+
     for rc in ranged_constraints
         func = JuMP.constraint_object(rc).func
         !(func isa JuMP.VariableRef) && @critical "Ranged constraint resolution currenlty only implemented for variable bounds"
@@ -68,5 +70,6 @@ function _resolve_ranged_constraints!(model::JuMP.Model)
         JuMP.set_lower_bound(func, set.lower)
         JuMP.set_upper_bound(func, set.upper)
     end    
+
     return nothing
 end
