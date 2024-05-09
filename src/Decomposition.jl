@@ -9,6 +9,8 @@ include("conversion/conversion.jl")
 include("dualization/dualization.jl")
 include("decomposition/decomposition.jl")
 
+include("solve/solve.jl")
+
 include("workflow/workflow.jl")
 
 
