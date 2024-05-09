@@ -9,6 +9,8 @@ const MOI = JuMP.MOI
 import PaPILO
 import SCIP_PaPILO_jll
 
+import HiGHS    # TODO: remove this after allowing to set an optimizer in the root node
+
 
 macro critical(msg, args...)
     msg = string(msg)

@@ -58,6 +58,7 @@ function Base.getproperty(node::AbstractNode, field::Symbol)
     hasproperty(node, field) && return getfield(node, field)
     field == :_uids && return getfield(node, :parent)._uids
     field == :_links && return getfield(node, :parent)._links
+    field == :_optimizer && return getfield(node, :parent)._optimizer
 
     if field in [:parent, :model, :program]
         @debug "$(nameof(typeof(node))).$(field) -> nothing" node = getfield(node, :id)
@@ -91,6 +92,8 @@ function add_child(parent::AbstractNode, TypeChildNode::Type{T}; kwargs...) wher
 end
 
 root_node(node::AbstractNode) = root_node(node.parent)
+
+solve!(node::AbstractNode) = @critical "`solve(node)` not implemented" node
 
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Base functionality for Programs ├───                                                                           ║

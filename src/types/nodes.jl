@@ -6,6 +6,7 @@ end
     id::ID
     _uids::Set{ID} = Set{ID}()
     _links::Set{AbstractLink} = Set{AbstractLink}()
+    _optimizer::Any = HiGHS.Optimizer   # TODO: make this configurable
     children::Vector{AbstractNode} = Vector{AbstractNode}()
 end
 function Node{NodeRoot}()
