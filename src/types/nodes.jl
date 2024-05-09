@@ -5,7 +5,6 @@ end
 @kwdef struct NodeRoot <: AbstractNode
     id::ID
     _uids::Set{ID} = Set{ID}()
-    _links::Set{AbstractLink} = Set{AbstractLink}()
     _optimizer::Any = HiGHS.Optimizer   # TODO: make this configurable
     children::Vector{AbstractNode} = Vector{AbstractNode}()
 end
@@ -42,6 +41,17 @@ end
     parent::AbstractNode
     children::Vector{AbstractNode}
     model::AbstractModel
+end
+
+@kwdef struct ModelNodeDualization <: AbstractModelNode
+    id::ID
+    parent::AbstractNode
+    children::Vector{AbstractNode}
+    model::AbstractModel
+
+    _primal_model::AbstractModel        # = `parent.model`
+    _dual_model::AbstractModel          # = `.model`
+    primal_dual_map::Dualization.PrimalDualMap
 end
 
 @kwdef struct ProgramNodeLP <: AbstractProgramNode

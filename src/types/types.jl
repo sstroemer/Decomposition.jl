@@ -57,7 +57,6 @@ abstract type AbstractLink end
 function Base.getproperty(node::AbstractNode, field::Symbol)
     hasproperty(node, field) && return getfield(node, field)
     field == :_uids && return getfield(node, :parent)._uids
-    field == :_links && return getfield(node, :parent)._links
     field == :_optimizer && return getfield(node, :parent)._optimizer
 
     if field in [:parent, :model, :program]
@@ -93,7 +92,14 @@ end
 
 root_node(node::AbstractNode) = root_node(node.parent)
 
-solve!(node::AbstractNode) = @critical "`solve(node)` not implemented" node
+function solve!(node::AbstractNode)
+    @debug "solve!(::AbstractNode)" node
+
+    isempty(node.children) && return _solve!(node)
+    length(node.children) > 1 && (@critical "Cannot solve multi-children node without additional information" node)
+    solve!(node.children[1])
+end
+_solve!(node::AbstractNode) = @critical "Cannot find implementation of `solve`" node
 
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Base functionality for Programs ├───                                                                           ║
@@ -107,4 +113,4 @@ solve!(node::AbstractNode) = @critical "`solve(node)` not implemented" node
 
 include("programs.jl")
 include("nodes.jl")
-include("links.jl")
+include("solutions.jl")

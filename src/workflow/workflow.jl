@@ -18,10 +18,6 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{I
     has_siblings = length(siblings) > 1
     is_last_child = isempty(siblings) ? false : (node.id == siblings[end].id)
 
-    links = [link for link in node._links if link.to == node]
-    is_link_target = !isempty(links)
-    link_name = is_link_target ? ("╼" * replace(string(nameof(typeof(links[1]))), "Link" => "") * "╾─") : "─"
-
     open_levels = something(open_levels, Vector{Int}())
     is_last_child && !isempty(open_levels) && pop!(open_levels)
 
@@ -40,11 +36,11 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{I
         if has_siblings
             prefix = is_last_child ? "╰" : "├"
             infix = isempty(node.children) ? "─" : "┬"
-            println("$(prefix)─$(infix)$(link_name) $(node)")
+            println("$(prefix)─$(infix)─ $(node)")
         else
             prefix = "╰"
             infix = isempty(node.children) ? "─" : "┬"
-            println("$(prefix)─$(infix)$(link_name) $(node)")
+            println("$(prefix)─$(infix)─ $(node)")
         end
     end
 
