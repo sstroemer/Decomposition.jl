@@ -1,6 +1,8 @@
 function _to_program_lp(node::AbstractModelNode)
     @debug "_to_program_lp(::AbstractModelNode)" node
 
+    @warn "_to_program_lp does not properly handle presolved models (probably ranged constraints)"
+
     model = node.model
     lpmd = JuMP.lp_matrix_data(model)
 
@@ -44,6 +46,7 @@ function _to_program_lp(node::AbstractModelNode)
     return Node{ProgramNodeLP}(node; program=ProgramLP(A, G, b, c, d, h, lb, size(A, 1), size(G, 1), size(A, 1) + size(G, 1), size(A, 2)))
 end
 
+to_program(node::String) = to_program(from_file(node))
 to_program(node::AbstractNode) = to_program(to_model(node))
 to_program(node::AbstractProgramNode) = node
 function to_program(node::AbstractModelNode)

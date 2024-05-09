@@ -3,28 +3,33 @@ struct Node{T <: AbstractNode}
 end
 
 @kwdef struct NodeRoot <: AbstractNode
-    id::UUIDs.UUID
-    _uids::Set{UUIDs.UUID} = Set{UUIDs.UUID}()
+    id::ID
+    _uids::Set{ID} = Set{ID}()
+    _links::Set{AbstractLink} = Set{AbstractLink}()
     children::Vector{AbstractNode} = Vector{AbstractNode}()
 end
 function Node{NodeRoot}()
-    node = NodeRoot(id=UUIDs.uuid4())
+    node = NodeRoot(id=ID(value = 0))
     push!(node._uids, node.id)
     return node
 end
+root_node(node::NodeRoot) = node
 
 @kwdef struct FileNodePresolved <: AbstractFileNode
-    id::UUIDs.UUID
+    id::ID
     parent::AbstractNode
     children::Vector{AbstractNode}
 
     filename::String
     filename_original::String
     filename_postsolve::String
+
+    filename_reduced_sol::String
+    filename_full_sol::String
 end
 
 @kwdef struct FileNodeGeneral <: AbstractFileNode
-    id::UUIDs.UUID
+    id::ID
     parent::AbstractNode
     children::Vector{AbstractNode}
 
@@ -32,14 +37,14 @@ end
 end
 
 @kwdef struct ModelNodeGeneral <: AbstractModelNode
-    id::UUIDs.UUID
+    id::ID
     parent::AbstractNode
     children::Vector{AbstractNode}
     model::AbstractModel
 end
 
 @kwdef struct ProgramNodeLP <: AbstractProgramNode
-    id::UUIDs.UUID
+    id::ID
     parent::AbstractNode
     children::Vector{AbstractNode}
     program::ProgramLP

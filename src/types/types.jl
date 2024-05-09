@@ -1,4 +1,16 @@
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+# ╟───┤ Internal IDs ├───                                                                                              ║
+# ╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+@kwdef struct ID
+    value::Int64
+end
+Base.show(io::IO, id::ID) = print(io, "$(string(id.value; base=16, pad=5))")
+Base.isequal(id1::ID, id2::ID) = id1.value == id2.value
+Base.hash(id::ID, h::UInt) = hash(id.value, hash(id.value, h))
+Base.isless(id1::ID, id2::ID) = id1.value < id2.value
+
+# ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Abstract base types: Programs & Nodes ├───                                                                     ║
 # ╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 
@@ -35,9 +47,17 @@ abstract type AbstractProgram end
 abstract type AbstractGeneralModel end
 const AbstractModel = Union{AbstractGeneralModel, JuMP.AbstractModel}
 
+"""
+    AbstractLink
+
+Mandatory fields: `from`, `to`, `info
+"""
+abstract type AbstractLink end
+
 function Base.getproperty(node::AbstractNode, field::Symbol)
     hasproperty(node, field) && return getfield(node, field)
     field == :_uids && return getfield(node, :parent)._uids
+    field == :_links && return getfield(node, :parent)._links
 
     if field in [:parent, :model, :program]
         @debug "$(nameof(typeof(node))).$(field) -> nothing" node = getfield(node, :id)
@@ -47,26 +67,30 @@ function Base.getproperty(node::AbstractNode, field::Symbol)
     @critical "Trying to access unknown field" node = getfield(node, :id) field
 end
 
-_to_str(node::AbstractNode) = "$(replace(string(nameof(typeof(node))), "Node" => "")) [$(string(node.id)[1:8])]"
+_to_str(node::AbstractNode) = "$(replace(string(nameof(typeof(node))), "Node" => "")) [$(node.id)]"
 Base.show(io::IO, node::AbstractNode) = print(io, _to_str(node))
 Base.show(io::IO, node::AbstractFileNode) = print(io, "$(_to_str(node)): $(node.filename)")
-Base.show(io::IO, node::AbstractModelNode) = print(io, "$(_to_str(node)): $(JuMP.num_variables(node.model)) vars, and $(JuMP.num_constraints(node.model; count_variable_in_set_constraints = false)) cons")
+Base.show(io::IO, node::AbstractModelNode) = print(io, "$(_to_str(node)): $(JuMP.num_variables(node.model)) vars and $(JuMP.num_constraints(node.model; count_variable_in_set_constraints = false)) cons")
 
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Base functionality for Nodes ├───                                                                              ║
 # ╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 
+function _next_id(node::AbstractNode; register::Bool = true)
+    uids = node._uids
+    id = ID(maximum(uids).value + 1)
+    register && push!(uids, id)
+    return id
+end
+
 function add_child(parent::AbstractNode, TypeChildNode::Type{T}; kwargs...) where {T <: AbstractNode}
-    id = UUIDs.uuid4()
-
-    _uids = parent._uids
-    (id in _uids) && @critical "Unexpected ID clash" parent id
-    push!(_uids, id)
-
+    id = _next_id(parent; register=true)
     child = TypeChildNode(id=id, parent=parent, children=Vector{AbstractNode}(); kwargs...)
     push!(parent.children, child)
     return child
 end
+
+root_node(node::AbstractNode) = root_node(node.parent)
 
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Base functionality for Programs ├───                                                                           ║
@@ -80,3 +104,4 @@ end
 
 include("programs.jl")
 include("nodes.jl")
+include("links.jl")

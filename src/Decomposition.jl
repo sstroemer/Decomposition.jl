@@ -3,8 +3,11 @@ module Decomposition
 include("util/util.jl")
 
 include("types/types.jl")
+
 include("presolve/presolve.jl")
 include("conversion/conversion.jl")
+include("dualization/dualization.jl")
+include("decomposition/decomposition.jl")
 
 include("workflow/workflow.jl")
 
