@@ -4,6 +4,7 @@ abstract type AbstractWorkflow end
 @kwdef struct Workflow <: AbstractWorkflow
     root::NodeRoot
 end
+Workflow(node::AbstractNode) = Workflow(root=root(node))
 
 function print_tree(workflow::Workflow; max_depth::Int = -1)
     _walk(workflow.root; max_depth=max_depth)
