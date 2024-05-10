@@ -23,7 +23,7 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{I
 
     if depth == 0
         println(node)
-        println("╤══════════════")
+        println("╤═══════════")
     else
         for i in 1:(depth-1)
             if (i - 1) in open_levels
