@@ -4,13 +4,13 @@ end
 
 @kwdef struct NodeRoot <: AbstractNode
     id::ID
-    _uids::Set{ID} = Set{ID}()
+    _uids::Dict{ID, AbstractNode} = Dict{ID, AbstractNode}()
     _optimizer::Any = HiGHS.Optimizer   # TODO: make this configurable
     children::Vector{AbstractNode} = Vector{AbstractNode}()
 end
 function Node{NodeRoot}()
     node = NodeRoot(id=ID(value = 0))
-    push!(node._uids, node.id)
+    node._uids[node.id] = node
     return node
 end
 root_node(node::NodeRoot) = node
@@ -49,9 +49,14 @@ end
     children::Vector{AbstractNode}
     model::AbstractModel
 
-    _primal_model::AbstractModel        # = `parent.model`
-    _dual_model::AbstractModel          # = `.model`
-    primal_dual_map::Dualization.PrimalDualMap
+    # _primal_model::AbstractModel        # = `parent.model`
+    # _dual_model::AbstractModel          # = `.model`
+    # primal_dual_map::Dualization.PrimalDualMap
+
+    _mock_optimizer::MOI.AbstractOptimizer
+    _outer_model::JuMP.Model
+    _reference_map_parent_to_outer::JuMP.GenericReferenceMap
+    _reference_map_outer_to_model::JuMP.GenericReferenceMap
 end
 
 @kwdef struct ProgramNodeLP <: AbstractProgramNode

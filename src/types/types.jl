@@ -45,7 +45,7 @@ abstract type AbstractProgramNode <: AbstractNode end
 abstract type AbstractProgram end
 
 abstract type AbstractGeneralModel end
-const AbstractModel = Union{AbstractGeneralModel, JuMP.AbstractModel}
+const AbstractModel = Union{AbstractGeneralModel, JuMP.AbstractModel, MOI.ModelLike}
 
 """
     AbstractLink
@@ -76,28 +76,30 @@ Base.show(io::IO, node::AbstractModelNode) = print(io, "$(_to_str(node)): $(JuMP
 # ╟───┤ Base functionality for Nodes ├───                                                                              ║
 # ╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
 
-function _next_id(node::AbstractNode; register::Bool = true)
+function _next_id(node::AbstractNode)
     uids = node._uids
-    id = ID(maximum(uids).value + 1)
-    register && push!(uids, id)
-    return id
+    id = ID(maximum(keys(uids)).value + 1)
+    return id, uids
 end
 
 function add_child(parent::AbstractNode, TypeChildNode::Type{T}; kwargs...) where {T <: AbstractNode}
-    id = _next_id(parent; register=true)
+    id, uids = _next_id(parent)
     child = TypeChildNode(id=id, parent=parent, children=Vector{AbstractNode}(); kwargs...)
+
+    uids[id] = child
     push!(parent.children, child)
+
     return child
 end
 
 root_node(node::AbstractNode) = root_node(node.parent)
+node_from_id(node::AbstractNode, id::ID) = get(node._uids, id, nothing)
 
 function solve!(node::AbstractNode)
     @debug "solve!(::AbstractNode)" node
-
-    isempty(node.children) && return _solve!(node)
     length(node.children) > 1 && (@critical "Cannot solve multi-children node without additional information" node)
-    solve!(node.children[1])
+
+    return (isempty(node.children) ? _solve!(node) : solve!(node.children[1]))
 end
 _solve!(node::AbstractNode) = @critical "Cannot find implementation of `solve`" node
 
