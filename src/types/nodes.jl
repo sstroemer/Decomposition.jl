@@ -13,7 +13,7 @@ function Node{NodeRoot}()
     node._uids[node.id] = node
     return node
 end
-root_node(node::NodeRoot) = node
+root(node::NodeRoot) = node
 
 @kwdef struct FileNodePresolved <: AbstractFileNode
     id::ID

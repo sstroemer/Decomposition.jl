@@ -92,7 +92,7 @@ function add_child(parent::AbstractNode, TypeChildNode::Type{T}; kwargs...) wher
     return child
 end
 
-root_node(node::AbstractNode) = root_node(node.parent)
+root(node::AbstractNode) = root(node.parent)
 node_from_id(node::AbstractNode, id::ID) = get(node._uids, id, nothing)
 
 function solve!(node::AbstractNode)
