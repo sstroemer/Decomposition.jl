@@ -5,7 +5,6 @@ Mandatory fields: `main`, `sub`
 """
 abstract type AbstractBendersDecompositionNode <: AbstractDecompositionNode end
 
-
 @kwdef struct SimpleBendersDecompositionNode <: AbstractBendersDecompositionNode
     id::ID
     parent::AbstractNode
@@ -19,13 +18,13 @@ function SimpleBendersDecomposition(node::AbstractModelNode)
     benders = Node{SimpleBendersDecompositionNode}(node)
 
     # TODO: Implement this
-    push!(benders.main, Node{ModelNodeGeneral}(benders; model=JuMP.copy_model(node.model)[1]))
+    push!(benders.main, Node{ModelNodeGeneral}(benders; model = JuMP.copy_model(node.model)[1]))
 
     # TODO: Implement this
-    push!(benders.sub, Node{ModelNodeGeneral}(benders; model=JuMP.copy_model(node.model)[1]))
-    push!(benders.sub, Node{ModelNodeGeneral}(benders; model=JuMP.copy_model(node.model)[1]))
-    push!(benders.sub, Node{ModelNodeGeneral}(benders; model=JuMP.copy_model(node.model)[1]))
-    push!(benders.sub, Node{ModelNodeGeneral}(benders; model=JuMP.copy_model(node.model)[1]))
+    push!(benders.sub, Node{ModelNodeGeneral}(benders; model = JuMP.copy_model(node.model)[1]))
+    push!(benders.sub, Node{ModelNodeGeneral}(benders; model = JuMP.copy_model(node.model)[1]))
+    push!(benders.sub, Node{ModelNodeGeneral}(benders; model = JuMP.copy_model(node.model)[1]))
+    push!(benders.sub, Node{ModelNodeGeneral}(benders; model = JuMP.copy_model(node.model)[1]))
 
     return benders
 end

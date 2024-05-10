@@ -19,7 +19,7 @@ function _presolve_papilo(node::AbstractFileNode)
     @debug "_presolve_papilo(::AbstractNode)" node
 
     filename_full = node.filename
-    raw_filename = rsplit(filename_full, "."; limit=2)[1]
+    raw_filename = rsplit(filename_full, "."; limit = 2)[1]
     filename_reduced = "$(raw_filename).papilo.reduced.mps"
     filename_postsolve = "$(raw_filename).papilo.postsolve"
 
@@ -29,22 +29,31 @@ function _presolve_papilo(node::AbstractFileNode)
 
     Suppressor.@suppress begin
         SCIP_PaPILO_jll.papilo() do exe
-            run(`$exe presolve -f $filename_full -v $filename_postsolve -r $filename_reduced`)
+            return run(`$exe presolve -f $filename_full -v $filename_postsolve -r $filename_reduced`)
         end
     end
 
-    return Node{FileNodePresolved}(node; filename=filename_reduced, filename_original=filename_full, filename_postsolve=filename_postsolve, filename_reduced_sol=filename_reduced_sol, filename_full_sol=filename_full_sol)
+    return Node{FileNodePresolved}(
+        node;
+        filename = filename_reduced,
+        filename_original = filename_full,
+        filename_postsolve = filename_postsolve,
+        filename_reduced_sol = filename_reduced_sol,
+        filename_full_sol = filename_full_sol,
+    )
 end
 
 function _postsolve_papilo(node::FileNodePresolved)
     SCIP_PaPILO_jll.papilo() do exe
-        run(`$(exe) postsolve -v $(node.filename_postsolve) -u $(node.filename_reduced_sol) -l $(node.filename_full_sol)`)
+        return run(
+            `$(exe) postsolve -v $(node.filename_postsolve) -u $(node.filename_reduced_sol) -l $(node.filename_full_sol)`,
+        )
     end
 end
 
 function _write_papilo_sol(model::JuMP.Model, filename::String)
     all_vars = JuMP.all_variables(model)
-    all_constr = JuMP.all_constraints(model; include_variable_in_set_constraints=false)
+    all_constr = JuMP.all_constraints(model; include_variable_in_set_constraints = false)
     open("$(filename).sol", "w") do solfile
         for var in all_vars
             write(solfile, "$(JuMP.name(var))\t$(JuMP.value(var))\n")
@@ -68,12 +77,13 @@ function _resolve_ranged_constraints!(model::JuMP.Model)
 
     for rc in ranged_constraints
         func = JuMP.constraint_object(rc).func
-        !(func isa JuMP.VariableRef) && @critical "Ranged constraint resolution currenlty only implemented for variable bounds"
+        !(func isa JuMP.VariableRef) &&
+            @critical "Ranged constraint resolution currenlty only implemented for variable bounds"
         set = JuMP.constraint_object(rc).set
         JuMP.delete(model, rc)  # TODO: precalc the upper/lower and do the removal in one pass beforehand
         JuMP.set_lower_bound(func, set.lower)
         JuMP.set_upper_bound(func, set.upper)
-    end    
+    end
 
     return nothing
 end

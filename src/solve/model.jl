@@ -23,19 +23,26 @@ function _update_mock_solution(node::ModelNodeDualization)
     nm_backend = JuMP.backend(node.model)
     mo = node._mock_optimizer
 
-    var_primal(_vi) = self_opt ? MOI.get(nm_backend, MOI.VariablePrimal(), index_map[_vi]) : get_result(node.children[1], index_map[_vi], ResultPrimalValue())
-    con_dual(_ci) = self_opt ? MOI.get(nm_backend, MOI.ConstraintDual(), index_map[_ci]) : get_result(node.children[1], index_map[_ci], ResultDualValue())
+    function var_primal(_vi)
+        return self_opt ? MOI.get(nm_backend, MOI.VariablePrimal(), index_map[_vi]) :
+               get_result(node.children[1], index_map[_vi], ResultPrimalValue())
+    end
+    function con_dual(_ci)
+        return self_opt ? MOI.get(nm_backend, MOI.ConstraintDual(), index_map[_ci]) :
+               get_result(node.children[1], index_map[_ci], ResultDualValue())
+    end
 
     primal = [var_primal(vi) for vi in MOI.get(mock_modellike, MOI.ListOfVariableIndices())]
     constraint_duals = [
-        ctype => [con_dual(ci) for ci in MOI.get(mock_modellike, MOI.ListOfConstraintIndices{ctype...}())]
-        for ctype in MOI.get(mock_modellike, MOI.ListOfConstraintTypesPresent())
+        ctype => [con_dual(ci) for ci in MOI.get(mock_modellike, MOI.ListOfConstraintIndices{ctype...}())] for
+        ctype in MOI.get(mock_modellike, MOI.ListOfConstraintTypesPresent())
     ]
     MOI.Utilities.mock_optimize!(mo, MOI.OPTIMAL, primal, MOI.FEASIBLE_POINT, constraint_duals...)
-    
+
     # Manually set the proper objective values, which allows disabling "internal" calculation of those, which takes a lot of time.
     obj_val = self_opt ? JuMP.objective_value(node.model) : get_result(node.children[1], ResultPrimalObjective())
-    dual_obj_val = self_opt ? JuMP.dual_objective_value(node.model) : get_result(node.children[1], ResultDualObjective())
+    dual_obj_val =
+        self_opt ? JuMP.dual_objective_value(node.model) : get_result(node.children[1], ResultDualObjective())
     MOI.set(mo, MOI.ObjectiveValue(), obj_val)
     MOI.set(mo, MOI.DualObjectiveValue(), dual_obj_val)
 
@@ -45,15 +52,35 @@ end
 _get_result_self(node::AbstractModelNode, ::Nothing, ::ResultPrimalObjective) = JuMP.objective_value(node.model)
 _get_result_self(node::AbstractModelNode, ::Nothing, ::ResultDualObjective) = JuMP.dual_objective_value(node.model)
 
-_get_result_self(node::AbstractModelNode, object::ObjectIndex, ::ResultPrimalValue) = JuMP.value(_resolve_object(node.model, object))
-_get_result_self(node::AbstractModelNode, object::ObjectIndex, ::ResultDualValue) = JuMP.dual(_resolve_object(node.model, object))
+function _get_result_self(node::AbstractModelNode, object::ObjectIndex, ::ResultPrimalValue)
+    return JuMP.value(_resolve_object(node.model, object))
+end
+function _get_result_self(node::AbstractModelNode, object::ObjectIndex, ::ResultDualValue)
+    return JuMP.dual(_resolve_object(node.model, object))
+end
 
-_get_result_self(node::ModelNodeDualization, ::Nothing, ::ResultPrimalObjective) = JuMP.objective_value(node._outer_model)
-_get_result_self(node::ModelNodeDualization, ::Nothing, ::ResultDualObjective) = JuMP.dual_objective_value(node._outer_model)
-_get_result_child(node::ModelNodeDualization, child::AbstractNode, ::Nothing, ::ResultPrimalObjective) = JuMP.objective_value(node._outer_model)
-_get_result_child(node::ModelNodeDualization, child::AbstractNode, ::Nothing, ::ResultDualObjective) = JuMP.dual_objective_value(node._outer_model)
+function _get_result_self(node::ModelNodeDualization, ::Nothing, ::ResultPrimalObjective)
+    return JuMP.objective_value(node._outer_model)
+end
+function _get_result_self(node::ModelNodeDualization, ::Nothing, ::ResultDualObjective)
+    return JuMP.dual_objective_value(node._outer_model)
+end
+function _get_result_child(node::ModelNodeDualization, child::AbstractNode, ::Nothing, ::ResultPrimalObjective)
+    return JuMP.objective_value(node._outer_model)
+end
+function _get_result_child(node::ModelNodeDualization, child::AbstractNode, ::Nothing, ::ResultDualObjective)
+    return JuMP.dual_objective_value(node._outer_model)
+end
 
-_get_result_self(node::ModelNodeDualization, object::ObjectIndex, ::ResultPrimalValue) = JuMP.value(_resolve_object(node._outer_model, object))
-_get_result_self(node::ModelNodeDualization, object::ObjectIndex, ::ResultDualValue) = JuMP.dual(_resolve_object(node._outer_model, object))
-_get_result_child(node::ModelNodeDualization, child::AbstractNode, object::ObjectIndex, ::ResultPrimalValue) = JuMP.value(_resolve_object(node._outer_model, object))
-_get_result_child(node::ModelNodeDualization, child::AbstractNode, object::ObjectIndex, ::ResultDualValue) = JuMP.dual(_resolve_object(node._outer_model, object))
+function _get_result_self(node::ModelNodeDualization, object::ObjectIndex, ::ResultPrimalValue)
+    return JuMP.value(_resolve_object(node._outer_model, object))
+end
+function _get_result_self(node::ModelNodeDualization, object::ObjectIndex, ::ResultDualValue)
+    return JuMP.dual(_resolve_object(node._outer_model, object))
+end
+function _get_result_child(node::ModelNodeDualization, child::AbstractNode, object::ObjectIndex, ::ResultPrimalValue)
+    return JuMP.value(_resolve_object(node._outer_model, object))
+end
+function _get_result_child(node::ModelNodeDualization, child::AbstractNode, object::ObjectIndex, ::ResultDualValue)
+    return JuMP.dual(_resolve_object(node._outer_model, object))
+end

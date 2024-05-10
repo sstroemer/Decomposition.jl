@@ -70,7 +70,12 @@ end
 _to_str(node::AbstractNode) = "$(replace(string(nameof(typeof(node))), "Node" => "")) [$(node.id)]"
 Base.show(io::IO, node::AbstractNode) = print(io, _to_str(node))
 Base.show(io::IO, node::AbstractFileNode) = print(io, "$(_to_str(node)): $(node.filename)")
-Base.show(io::IO, node::AbstractModelNode) = print(io, "$(_to_str(node)): $(JuMP.num_variables(node.model)) vars and $(JuMP.num_constraints(node.model; count_variable_in_set_constraints = false)) cons")
+function Base.show(io::IO, node::AbstractModelNode)
+    return print(
+        io,
+        "$(_to_str(node)): $(JuMP.num_variables(node.model)) vars and $(JuMP.num_constraints(node.model; count_variable_in_set_constraints = false)) cons",
+    )
+end
 
 # ╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 # ╟───┤ Base functionality for Nodes ├───                                                                              ║
@@ -84,7 +89,7 @@ end
 
 function add_child(parent::AbstractNode, TypeChildNode::Type{T}; kwargs...) where {T <: AbstractNode}
     id, uids = _next_id(parent)
-    child = TypeChildNode(id=id, parent=parent, children=Vector{AbstractNode}(); kwargs...)
+    child = TypeChildNode(; id = id, parent = parent, children = Vector{AbstractNode}(), kwargs...)
 
     uids[id] = child
     push!(parent.children, child)

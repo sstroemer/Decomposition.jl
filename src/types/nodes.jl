@@ -9,7 +9,7 @@ end
     children::Vector{AbstractNode} = Vector{AbstractNode}()
 end
 function Node{NodeRoot}()
-    node = NodeRoot(id=ID(value = 0))
+    node = NodeRoot(; id = ID(; value = 0))
     node._uids[node.id] = node
     return node
 end
@@ -61,4 +61,9 @@ end
     children::Vector{AbstractNode}
     program::ProgramLP
 end
-Base.show(io::IO, node::ProgramNodeLP) = print(io, "$(_to_str(node)): $(node.program.m) × $(node.program.n) (nz = $(length(node.program.A.nzval) + length(node.program.A.nzval)))")
+function Base.show(io::IO, node::ProgramNodeLP)
+    return print(
+        io,
+        "$(_to_str(node)): $(node.program.m) × $(node.program.n) (nz = $(length(node.program.A.nzval) + length(node.program.A.nzval)))",
+    )
+end
