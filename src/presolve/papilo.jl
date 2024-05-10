@@ -27,7 +27,11 @@ function _presolve_papilo(node::AbstractFileNode)
     filename_reduced_sol = "$(raw_filename).papilo.reduced.sol"
     filename_full_sol = "$(raw_filename).papilo.full.sol"
 
-    Suppressor.@suppress PaPILO.presolve_write_from_file(filename_full, filename_postsolve, filename_reduced)
+    Suppressor.@suppress begin
+        SCIP_PaPILO_jll.papilo() do exe
+            run(`$exe presolve -f $filename_full -v $filename_postsolve -r $filename_reduced`)
+        end
+    end
 
     return Node{FileNodePresolved}(node; filename=filename_reduced, filename_original=filename_full, filename_postsolve=filename_postsolve, filename_reduced_sol=filename_reduced_sol, filename_full_sol=filename_full_sol)
 end
