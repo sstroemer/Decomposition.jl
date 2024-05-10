@@ -10,7 +10,7 @@ function print_tree(workflow::Workflow; max_depth::Int = -1)
     _walk(workflow.root; max_depth=max_depth)
 end
 
-function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{ID}} = nothing, max_depth::Int = -1, open_levels::Union{Nothing, Vector{Int}} = nothing)
+function _walk(node::AbstractNode, depth::Int = -1; visited::Union{Nothing, Set{ID}} = nothing, max_depth::Int = -1, open_levels::Union{Nothing, Vector{Int}} = nothing)
     max_depth > 0 && depth > max_depth && return
     visited = something(visited, Set{ID}())
     node.id in visited && return
@@ -22,27 +22,21 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{I
     open_levels = something(open_levels, Vector{Int}())
     is_last_child && !isempty(open_levels) && pop!(open_levels)
 
-    if depth == 0
+    if depth == -1
         println(node)
         println("╤═══════════")
+    elseif depth == 0
+        println(node)
     else
         for i in 1:(depth-1)
             if (i - 1) in open_levels
-                print("┆ ")
+                print("┆  ")
             else
-                print("  ")
+                print("   ")
             end
         end
-        # print("$(repeat(" ", (depth-1) * 2))")
-        if has_siblings
-            prefix = is_last_child ? "╰" : "├"
-            infix = isempty(node.children) ? "─" : "┬"
-            println("$(prefix)─$(infix)─ $(node)")
-        else
-            prefix = "╰"
-            infix = isempty(node.children) ? "─" : "┬"
-            println("$(prefix)─$(infix)─ $(node)")
-        end
+        prefix = (!has_siblings || is_last_child) ? "╰" : "├"
+        println("$(prefix)─ $(node)")
     end
 
     push!(visited, node.id)
@@ -51,5 +45,4 @@ function _walk(node::AbstractNode, depth::Int = 0; visited::Union{Nothing, Set{I
     for child in node.children
         _walk(child, depth+1; visited=visited, max_depth=max_depth, open_levels=open_levels)
     end
-    # pop!(open_levels)
 end
