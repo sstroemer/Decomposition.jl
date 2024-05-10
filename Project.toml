@@ -1,11 +1,10 @@
 name = "Decomposition"
 uuid = "d4dfb27b-861c-4425-ac1a-a7246d2447ee"
 authors = ["sstroemer <stefan.stroemer@gmail.com>"]
-version = "0.1.0-DEV"
+version = "0.1.0"
 
 [deps]
 Dualization = "191a621a-6537-11e9-281d-650236a99e60"
-Gurobi = "2e9cd046-0924-5485-92f1-d5272153d98b"
 HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -13,7 +12,6 @@ PaPILO = "d9c0c21a-f458-4936-9625-08537585e348"
 SCIP_PaPILO_jll = "fc9abe76-a5e6-5fed-b0b7-a12f309cf031"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
-UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [compat]
 julia = "1.9"

@@ -1,5 +1,4 @@
 import SparseArrays
-import UUIDs
 import Suppressor
 
 import JuMP
