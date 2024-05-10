@@ -115,4 +115,3 @@ _solve!(node::AbstractNode) = @critical "Cannot find implementation of `solve`" 
 
 include("programs.jl")
 include("nodes.jl")
-include("solutions.jl")

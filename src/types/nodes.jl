@@ -49,10 +49,6 @@ end
     children::Vector{AbstractNode}
     model::AbstractModel
 
-    # _primal_model::AbstractModel        # = `parent.model`
-    # _dual_model::AbstractModel          # = `.model`
-    # primal_dual_map::Dualization.PrimalDualMap
-
     _mock_optimizer::MOI.AbstractOptimizer
     _outer_model::JuMP.Model
     _reference_map_parent_to_outer::JuMP.GenericReferenceMap
