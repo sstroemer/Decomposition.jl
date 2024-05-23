@@ -1,5 +1,5 @@
 import SparseArrays
-import Suppressor
+using Suppressor
 
 import JuMP
 import Dualization
@@ -7,6 +7,8 @@ const MOI = JuMP.MOI
 
 import SCIP_PaPILO_jll
 import HiGHS    # TODO: remove this after allowing to set an optimizer in the root node
+
+import Printf
 
 macro critical(msg, args...)
     msg = string(msg)
@@ -39,4 +41,14 @@ function _norm_strname(str::String, width::Int64 = 50)
     end
 
     return "$(prefix)...$(suffix)"
+end
+
+function _get_decomposition_data!(model::JuMP.Model)
+    return get!(model.ext, :decomposition_jl, Dict{Symbol, Dict}())
+end
+
+function _print_iteration(k, args...)
+    f(x) = Printf.@sprintf("%11.3e", x)
+    println(lpad(k, 8), " │ ", join(f.(args), " │ "))
+    return
 end
