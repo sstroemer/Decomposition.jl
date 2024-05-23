@@ -11,4 +11,4 @@ function decompose(node::AbstractNode; method::Symbol = :benders_simple)
     @critical "Unknown decomposition method" method
 end
 
-decompose(node::String; method::Symbol) = decompose(from_file(node); method = method)
+decompose(node::String; method::Symbol = :benders_simple) = decompose(from_file(node); method = method)
