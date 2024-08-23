@@ -162,18 +162,34 @@ function bd_decompose(model::DecomposedModel)
     push!(model.models, m_sub)
     push!(model.reference_maps, rm_sub)
 
+    # Change interval constraints to bounds, since they might interfere with fixing variables.
+    for c_index in all_constraints(m_sub, VariableRef, MOI.Interval{Float64})
+        constraint = constraint_object(c_index)
+        delete(m_sub, c_index)
+        set_lower_bound(constraint.func, constraint.set.lower)
+        set_upper_bound(constraint.func, constraint.set.upper)
+    end
+
+    delvars = VariableRef[]
     for v in all_variables(model.monolithic)
         if v_main[index(v).value]
             # This is a main variable.
             model.decomposition_maps[rm_main[v]] = [rm_sub[v]]  # TODO: account for more than 1 sub
             set_objective_coefficient(m_sub, rm_sub[v], 0)
+
+            # Delete all constraints that are only attached to this variable.
+            # has_lower_bound(rm_sub[v]) && delete_lower_bound(rm_sub[v])
+            # has_upper_bound(rm_sub[v]) && delete_upper_bound(rm_sub[v])
+            # `VariableIndex`-in-`MathOptInterface.Interval{Float64}
             continue
         else
             # This is NOT a main variable.
-            delete(m_main, rm_main[v])
+            push!(delvars, rm_main[v])
+            # delete(m_main, rm_main[v])
             # TODO: delete!(rm_main.index_map.var_map, v)
         end
     end
+    delete(m_main, delvars)
 
     # Create sub-model estimation variable(s).
     # TODO: allow `θ[s = 1:S]`
@@ -279,7 +295,7 @@ function iterate!(model::DecomposedModel)
     end
 
     # Update stats.
-    # TODO: Move this into  a function that is bound to the "stats" struct
+    # TODO: Move this into a function that is bound to the "stats" struct
     model.stats[:gap_abs] = model.stats[:upper_bound] - model.stats[:lower_bound]
     model.stats[:gap_rel] = model.stats[:gap_abs] / abs(model.stats[:upper_bound])  # TODO: check, use ub or lb here? (gurobi)
     
@@ -294,7 +310,9 @@ function iterate!(model::DecomposedModel)
 end
 
 
+orig_model = read_from_file("uc_070_1y.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
 orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+_om, _ = copy_model(orig_model)
 
 # TODO: check that variables and constraints are 1:N indexed, since we currently blindly trust this (e.g., for efficient matrix ops)
 # TODO: check (or later handle) that the model is a minimization problem
@@ -302,18 +320,26 @@ orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MP
 model = DecomposedModel(; monolithic = orig_model)
 model.monolithic.ext[:lp_matrix_data] = lp_matrix_data(model.monolithic)  # TODO: move that into the decomposedmodel
 
-add_annotation!(model, all_variables(orig_model)[1], :design)
+design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
+vs = all_variables(orig_model)
+vv = [v for v in vs if any(occursin(el, name(v)) for el in design_vs)]
+
+for var in vv
+    add_annotation!(model, var, :design)
+end
 
 # TODO: transform `bd_decompose` into `Benders.decompose!(...)` with a proper submodule `Benders`
 bd_decompose(model)
 bd_modify_main_ensure_var_bounds(model; bound = 1e8)
 
 attach_solver(bd_main(model), HiGHS.Optimizer)
-# set_attribute(bd_main(model), "solver", "ipm")
+set_attribute(bd_main(model), "solver", "ipm")
+set_attribute(bd_main(model), "run_crossover", "off")
 attach_solver(bd_sub(model; index=1), HiGHS.Optimizer)
 
 bd_modify_sub_ensure_feasibility(model)
 
 iterate!(model)
 
-
+# NOTE FOR TOMORROW:
+# are the "interval" constraints copied correctly? if yes, then the "set bound" should fail, right?
