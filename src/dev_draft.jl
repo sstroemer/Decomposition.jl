@@ -90,8 +90,17 @@ Base.getproperty(x::DecompDataDict, s::Symbol) = getfield(x, :_internal)[s]
 DecompositionData = DecompDataDict
 _djl(m::Model) = m.ext[:decomposition]
 
-@kwdef struct DecomposedModel11
+abstract type DecompositionAttribute end
+# TODO: Keep a list of all "attributes" (which are just sub-types that describe modifications, and may contain more data (e.g., the sub-model index they were applied to))
+
+@kwdef struct DecomposedModel12
     monolithic::JuMP.Model
+
+    lpmd::JuMP.LPMatrixData
+
+    idx_model_vars::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
+    idx_model_cons::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
+
 
     # TODO: allow storing "all_variables" somewhere for each model (and for main: before adding θ!)
     models::Vector{JuMP.Model} = Vector{JuMP.Model}[]
@@ -111,7 +120,7 @@ _djl(m::Model) = m.ext[:decomposition]
 
     cuts = Vector{Any}()  # TODO: track which cut is created by which iteration (inside the stats struct)
 end
-DecomposedModel = DecomposedModel11
+DecomposedModel = DecomposedModel12
 
 bd_main(model::DecomposedModel) = model.models[1]
 bd_sub(model::DecomposedModel; index::Int = 1) = model.models[1 + index]
@@ -317,8 +326,7 @@ _om, _ = copy_model(orig_model)
 # TODO: check that variables and constraints are 1:N indexed, since we currently blindly trust this (e.g., for efficient matrix ops)
 # TODO: check (or later handle) that the model is a minimization problem
 
-model = DecomposedModel(; monolithic = orig_model)
-model.monolithic.ext[:lp_matrix_data] = lp_matrix_data(model.monolithic)  # TODO: move that into the decomposedmodel
+model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model))
 
 design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
 vs = all_variables(orig_model)
@@ -330,16 +338,173 @@ end
 
 # TODO: transform `bd_decompose` into `Benders.decompose!(...)` with a proper submodule `Benders`
 bd_decompose(model)
-bd_modify_main_ensure_var_bounds(model; bound = 1e8)
+bd_modify_main_ensure_var_bounds(model; bound = 1e7)
 
 attach_solver(bd_main(model), HiGHS.Optimizer)
 set_attribute(bd_main(model), "solver", "ipm")
 set_attribute(bd_main(model), "run_crossover", "off")
 attach_solver(bd_sub(model; index=1), HiGHS.Optimizer)
 
-bd_modify_sub_ensure_feasibility(model)
+bd_modify_sub_ensure_feasibility(model; penalty=1e5)
 
 iterate!(model)
 
+
 # NOTE FOR TOMORROW:
 # are the "interval" constraints copied correctly? if yes, then the "set bound" should fail, right?
+
+
+
+
+# TODO: given a linked constraint x + 3y_1 - 2y_2 <= b, we can determine "bounds" for x, by looking at lower bounds of y_1 and upper bounds of y_2
+
+# TODO: check sense, integer, binary, for Min, none, none
+
+
+lpmd = model.monolithic.ext[:lp_matrix_data]
+
+
+
+
+function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64})
+    # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
+    # TODO: transform single variable constraints into bounds
+
+    model = direct_model(HiGHS.Optimizer())
+
+    # Create variables, and set bounds.
+    @variable(model, x[i = idx_v])
+    for i in eachindex(x)
+        isfinite(lpmd.x_lower[i]) && set_lower_bound(x[i], lpmd.x_lower[i])
+        isfinite(lpmd.x_upper[i]) && set_upper_bound(x[i], lpmd.x_upper[i])
+    end
+
+    # Create constraints.
+    for i in idx_c
+        if lpmd.b_lower[i] == lpmd.b_upper[i]
+            # If `lb == ub`, then we know both have to be finite.
+            @constraint(model, lpmd.A[i, idx_v]' * x.data == lpmd.b_lower[i])
+            continue
+        end
+
+        isfinite(lpmd.b_lower[i]) && @constraint(model, lpmd.A[i, idx_v]' * x.data >= lpmd.b_lower[i])
+        isfinite(lpmd.b_upper[i]) && @constraint(model, lpmd.A[i, idx_v]' * x.data <= lpmd.b_upper[i])
+    end
+
+    return model
+end
+
+"""
+
+main: obj, con
+sub: pure, full (includes main costs)
+"""
+struct BD_MainObjectiveObj <: DecompositionAttribute end
+struct BD_MainObjectiveCon <: DecompositionAttribute end
+
+struct BD_SubObjectivePure <: DecompositionAttribute; index::Int64; end
+struct BD_SubObjectiveFull <: DecompositionAttribute; index::Int64; end
+
+function bd_modify(model::DecomposedModel, attribute::DecompositionAttribute)
+   @error "Not implemented"
+end
+
+function bd_modify(model::DecomposedModel, ::BD_MainObjectiveObj)
+    m = bd_main(model)
+    idx_v = model.idx_model_vars[1]
+    
+    @objective(m, Min, model.lpmd.c[idx_v]' * m[:x].data + model.lpmd.c_offset)
+
+    return nothing
+end
+
+function bd_modify(model::DecomposedModel, attribute::BD_SubObjectivePure)
+    m = bd_sub(model; index=attribute.index)
+    idx_v = model.idx_model_vars[1 + attribute.index]
+
+    obj = AffExpr(0.0)
+    for i in idx_v
+        (i in model.idx_model_vars[1]) && continue
+        add_to_expression!(obj, model.lpmd.c[i], m[:x][i])
+    end
+    @objective(m, Min, obj)
+
+    return nothing
+end
+
+
+
+
+using JuMP
+import HiGHS
+import Statistics: mean
+using Chairmarks
+
+import Printf
+function _print_iteration(k, args...)
+    f(x) = Printf.@sprintf("%11.3e", x)
+    println(lpad(k, 8), " │ ", join(f.(args), " │ "))
+    return
+end
+
+include("draft/model.jl")
+include("draft/benders.jl")
+
+# --------------------------------------------------------------------
+
+orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model))
+
+design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
+design_vs_idx = [index(v).value for v in all_variables(orig_model) if any(occursin(el, name(v)) for el in design_vs)]
+
+v_main = BitVector(any(occursin(el, name(v)) for el in design_vs) for v in all_variables(orig_model))
+v_sub = .~v_main
+nzA = (model.lpmd.A .!= 0)
+has_main_vars = nzA * v_main .!= 0
+has_sub_vars = nzA * v_sub .!= 0
+
+idx_main_vars = design_vs_idx
+idx_main_cons = findall(has_main_vars .& (.~has_sub_vars))
+
+# --------------------------------------------------------------------
+
+m_main = model_from_lp(model.lpmd, idx_main_vars, idx_main_cons)
+m_sub = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
+
+push!(model.models, m_main)
+push!(model.models, m_sub)
+
+push!(model.idx_model_vars, idx_main_vars)
+push!(model.idx_model_vars, collect(axes(model.lpmd.A, 2)))
+
+push!(model.idx_model_cons, idx_main_cons)
+push!(model.idx_model_cons, collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
+
+# --------------------------------------------------------------------
+
+bd_modify(model, BD_MainObjectiveObj())
+bd_modify(model, BD_SubObjectivePure(1))
+
+bd_modify(model, BD_SubEnsureFeasibility(1, 1e6))
+
+optimize!(bd_main(model))
+
+sol = value.(bd_main(model)[:x])
+for s in 1:(length(model.models) - 1), i in eachindex(sol)
+    m = bd_sub(model; index=s)
+    fix(m[:x][i], sol[i]; force=true)
+end
+
+optimize!(bd_sub(model; index=1))
+
+
+exp_cut = AffExpr(objective_value(bd_sub(model; index=1)))
+for i in eachindex(sol)
+    π = reduced_cost(bd_sub(model; index=s)[:x][i])
+    add_to_expression!(exp_cut, π, bd_main(model)[:x][i] - value(var))
+end
+
+push!(model.cuts, @constraint(bd_main(model), bd_main(model)[:θ] >= exp_cut))
+
+
