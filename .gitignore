@@ -30,3 +30,19 @@ test.lp
 
 # Temporary files.
 tmp/
+
+# VSCode files.
+.vscode/
+
+# Python dev files.
+python/
+
+# Model files.
+*.lp
+*.mps
+*.lp.*
+*.mps.*
+*.LP
+*.MPS
+*.LP.*
+*.MPS.*
