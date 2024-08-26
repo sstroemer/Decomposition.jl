@@ -158,3 +158,27 @@ function set(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
         end
     end
 end
+
+"""
+Helper function to get the graph structure.
+"""
+function create_adjacency_matrix(A, rm)
+    n = size(A, 2)
+    adjacency_matrix = zeros(Int, n, n)
+
+    for i in 1:size(A, 1)
+        nodes = A[i, :].nzind
+        for j in 1:length(nodes)
+            u = nodes[j]
+            nodes[j] in rm && continue
+            for k in j+1:length(nodes)
+                v = nodes[k]
+                nodes[k] in rm && continue
+                adjacency_matrix[u, v] = 1
+                adjacency_matrix[v, u] = 1
+            end
+        end
+    end
+
+    return adjacency_matrix
+end

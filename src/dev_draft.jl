@@ -436,7 +436,7 @@ end
 
 
 using JuMP
-import HiGHS
+import HiGHS, Gurobi
 import Statistics: mean
 using Chairmarks
 
@@ -447,16 +447,52 @@ function _print_iteration(k, args...)
     return
 end
 
-include("draft/model.jl")
-include("draft/benders.jl")
+include("model.jl")
+include("benders/benders.jl")
 
 # --------------------------------------------------------------------
 
 orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+# orig_model = read_from_file("national_scale.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+# set_optimizer(orig_model, HiGHS.Optimizer)
+# optimize!(orig_model)                       # "ns070.MPS" => 2.7704847864e+05, "national_scale.mps" => 5.8213980798e+06 
+
 model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model))
+
+# 6.740 ms (202303 allocs: 14.801 MiB)
+# @b model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1)))
+# @profview lpm = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1)))
+# @objective(lpm, Min, sum(model.lpmd.c[i] * lpm[:x][i] for i in collect(axes(model.lpmd.A, 2))) + model.lpmd.c_offset)
+# optimize!(lpm)   
 
 design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
 design_vs_idx = [index(v).value for v in all_variables(orig_model) if any(occursin(el, name(v)) for el in design_vs)]
+
+split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
+
+T = 120 
+linking_cs = [
+    "balance_supply_with_storage",  # i x T
+    "balance_storage",              # i x T
+    "ramping_up",                   # i x (T - 2)
+    "ramping_down"                  # i x (T - 2)
+]
+temp_vs = Dict()
+for csn in linking_cs
+    linking_cs_idx = [i for i in axes(model.lpmd.A, 1) if occursin(csn, name(model.lpmd.affine_constraints[i]))]
+
+    temp_vs_idx = findall(((sum(model.lpmd.A[linking_cs_idx, :] .< 0; dims=1) .== 1) .& (sum(model.lpmd.A[linking_cs_idx, :] .> 0; dims=1) .== 1))[1, :])
+    
+    if csn in ["balance_supply_with_storage", "balance_storage"]
+        vec = model.lpmd.variables[temp_vs_idx]
+        temp_vs[csn] = split_vec(vec, T)
+    elseif csn in ["ramping_up", "ramping_down"]
+        vec = model.lpmd.variables[temp_vs_idx]
+        temp_vs[csn] = vcat.(nothing, split_vec(vec, T - 2), nothing)
+    end
+end
+
+# --------------------------------------------------------------------
 
 v_main = BitVector(any(occursin(el, name(v)) for el in design_vs) for v in all_variables(orig_model))
 v_sub = .~v_main
@@ -469,8 +505,50 @@ idx_main_cons = findall(has_main_vars .& (.~has_sub_vars))
 
 # --------------------------------------------------------------------
 
+nof_t_splits = 5
+len_of_t_split = T ÷ nof_t_splits
+
+decomposed_variables = []
+selected_temp_variables = []
+for s in 1:nof_t_splits
+    t_from = 1 + (s-1) * len_of_t_split
+    t_to = s * len_of_t_split
+
+    for (k, v) in temp_vs
+        for el in v
+            isnothing(el[t_from]) || push!(decomposed_variables, el[t_from])
+            isnothing(el[t_to]) || push!(decomposed_variables, el[t_to])
+            append!(selected_temp_variables, el[t_from+1:t_to-1])
+        end
+    end
+end
+
+append!(idx_main_vars, getfield.(index.(decomposed_variables), :value))
+
+ama = create_adjacency_matrix(model.lpmd.A, idx_main_vars)
+using Graphs
+g = SimpleGraph(ama)
+cc = connected_components(g)
+
+_tmp = nothing
+for component in cc
+    if (length(component) > 1) || !(component[1] in idx_main_vars)
+        constraints_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
+        _tmp = model_from_lp(
+            model.lpmd,
+            sort(collect(Set(vcat(component, idx_main_vars)))), # TODO: do not consider the "decomposed" ones here, that do not belong to this block ...
+            constraints_in_component
+        )
+        break
+    end
+end
+
+
+
+# --------------------------------------------------------------------
+
 m_main = model_from_lp(model.lpmd, idx_main_vars, idx_main_cons)
-m_sub = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
+m_sub = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1))) #collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
 
 push!(model.models, m_main)
 push!(model.models, m_sub)
@@ -479,32 +557,230 @@ push!(model.idx_model_vars, idx_main_vars)
 push!(model.idx_model_vars, collect(axes(model.lpmd.A, 2)))
 
 push!(model.idx_model_cons, idx_main_cons)
-push!(model.idx_model_cons, collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
+push!(model.idx_model_cons, collect(axes(model.lpmd.A, 1))) # collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
 
 # --------------------------------------------------------------------
 
+set(model, SOLVE_AlgorithmIPM(:main))
+set(model, SOLVE_AlgorithmSimplex(:sub, :primal))
+set(model, SOLVE_AlgorithmIPM(:sub))
+
+set_attribute(bd_main(model), "PreDual", 1)
+
+# set_attribute(bd_main(model), "NumericFocus", 3)  # primal simplex for sub, with presolve, leads to infeasbilities in main without NumericFocus
+# set_attribute(bd_sub(model), "Presolve", 1)
+set_attribute(bd_sub(model), "InfUnbdInfo", 1)
+set_attribute(bd_sub(model), "DualReductions", 0)
+
 bd_modify(model, BD_MainObjectiveObj())
 bd_modify(model, BD_SubObjectivePure(1))
+bd_modify(model, MainVirtualBounds(0.0, 1e6))
 
-bd_modify(model, BD_SubEnsureFeasibility(1, 1e6))
+bd_modify(model, BD_SubEnsureFeasibilityLinked(1, 1e6))
 
-optimize!(bd_main(model))
+model.stats[:upper_bound] = Inf
+model.stats[:lower_bound] = -Inf
+for i in 1:100
+    set_silent(bd_main(model))
+    optimize!(bd_main(model))
 
-sol = value.(bd_main(model)[:x])
-for s in 1:(length(model.models) - 1), i in eachindex(sol)
-    m = bd_sub(model; index=s)
-    fix(m[:x][i], sol[i]; force=true)
+    # Extract main-model results.
+    res_main_θ = value(bd_main(model)[:θ])
+    res_main_obj = objective_value(bd_main(model))
+    res_main_obj_f_val = value(objective_function(bd_main(model)))  # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+    res_main_obj_exp = bd_has_attribute_type(model, BD_MainObjectiveCon) ? value(bd_main(model)[:obj]) : nothing
+
+    # Update lower bound.
+    model.stats[:lower_bound] = res_main_obj
+
+    sol = value.(bd_main(model)[:x])
+    for s in 1:(length(model.models) - 1), i in sol.axes[1]
+        fix(bd_sub(model; index=s)[:x][i], sol[i]; force=true)
+    end
+
+    # Check if we can remove the lower bound.
+    if has_lower_bound(bd_main(model)[:θ]) && res_main_θ > lower_bound(bd_main(model)[:θ])
+        delete_lower_bound(bd_main(model)[:θ])
+    end
+
+    set_silent(bd_sub(model; index=1))
+    optimize!(bd_sub(model; index=1))
+
+    if primal_status(bd_sub(model; index=1)) == MOI.NO_SOLUTION
+        if dual_status(bd_sub(model; index=1)) != MOI.INFEASIBILITY_CERTIFICATE
+            @error "Turn off presolve, or any setting blocking extraction of dual rays"
+        else
+            exp_cut = AffExpr(0.0)
+            for i in sol.axes[1] # TODO: handle other sub-models
+                λ = dual(FixRef(bd_sub(model; index=1)[:x][i]))
+                add_to_expression!(exp_cut, λ, bd_main(model)[:x][i])
+                add_to_expression!(exp_cut, λ, -fix_value(bd_sub(model; index=1)[:x][i]))
+            end
+    
+            push!(model.cuts[:feasibility], @constraint(bd_main(model), exp_cut <= 0))
+            
+            println(lpad(model.stats[:iteration], 8), " │  . . . . adding feasibility cut . . . .")
+        end
+    else
+        # Update upper bound.
+        ub_candidate = (
+            if bd_has_attribute_type(model, BD_MainObjectiveCon)
+                res_main_obj_exp + objective_value(bd_sub(model; index=1))
+            else
+                res_main_obj_f_val - res_main_θ + objective_value(bd_sub(model; index=1))
+            end
+        )
+        if ub_candidate < model.stats[:upper_bound]
+            model.stats[:upper_bound] = ub_candidate
+            # TODO: update best solution
+        end
+
+        # Update stats.
+        # TODO: Move this into a function that is bound to the "stats" struct
+        model.stats[:gap_abs] = model.stats[:upper_bound] - model.stats[:lower_bound]
+        model.stats[:gap_rel] = model.stats[:gap_abs] / abs(model.stats[:upper_bound])  # TODO: check, use ub or lb here? (gurobi)
+
+        exp_cut = AffExpr(objective_value(bd_sub(model; index=1)))
+        for i in sol.axes[1]
+            λ = reduced_cost(bd_sub(model; index=1)[:x][i])
+            add_to_expression!(exp_cut, λ, bd_main(model)[:x][i])
+            add_to_expression!(exp_cut, λ, -sol[i])
+        end
+
+        if bd_has_attribute_type(model, BD_MainObjectiveCon)
+            exp_cut += bd_main(model)[:obj]
+        end
+
+        push!(model.cuts[:optimality], @constraint(bd_main(model), bd_main(model)[:θ] >= exp_cut))
+
+        # TODO: Move the printing into the next_iter function
+        _print_iteration(model.stats[:iteration], model.stats[:lower_bound], model.stats[:upper_bound], model.stats[:gap_rel])
+    end
+
+    model.stats[:iteration] += 1
 end
 
-optimize!(bd_sub(model; index=1))
 
+bd_query(model, BD_SubFeasibility())
 
-exp_cut = AffExpr(objective_value(bd_sub(model; index=1)))
-for i in eachindex(sol)
-    π = reduced_cost(bd_sub(model; index=s)[:x][i])
-    add_to_expression!(exp_cut, π, bd_main(model)[:x][i] - value(var))
+if has_lower_bound(bd_main(model)[:θ])
+    delete_lower_bound(bd_main(model)[:θ])
 end
 
-push!(model.cuts, @constraint(bd_main(model), bd_main(model)[:θ] >= exp_cut))
 
 
+_m = Model(Gurobi.Optimizer)
+
+@variable(_m, x[1:2] >= 0)
+@variable(_m, y[1:2])
+@variable(_m, z[1:2])
+
+
+@constraint(_m, y .== z)
+
+@constraint(_m, z[1] <= 1)
+@constraint(_m, z[2] <= 1)
+
+
+c1 = @constraint(_m, c1, x[1] <= y[1])
+c2 = @constraint(_m, c2, sum(x) >= 3)
+c3 = @constraint(_m, c3, x[2] <= y[2])
+
+@objective(_m, Min, -sum(x))
+
+# for gurobi:
+set_attribute(_m, "InfUnbdInfo", 1)
+set_attribute(_m, "DualReductions", 0)
+# set_attribute(_m, "presolve", "off")
+optimize!(_m)
+
+primal_status(_m) == MOI.NO_SOLUTION
+dual_status(_m) == MOI.NO_SOLUTION # => need presolve off
+
+dual_status(_m) == MOI.INFEASIBILITY_CERTIFICATE    # => feasibility cut
+
+ζ = dual.(FixRef.(y))
+b = fix_value.(y)
+
+
+@constraint(_m, ζ' * (y .- b) <= 0)
+@constraint(_m, ζ' * y <= 0)
+
+
+dual.([c1, c2, c3])
+
+
+c = all_constraints(_m; include_variable_in_set_constraints = true)
+
+dual.(c)
+
+
+
+
+unset_silent(bd_main(model))
+mwe = bd_main(model)
+write_to_file(mwe, "mwe.mps.bz2"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+
+mwe = read_from_file("mwe.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+set_optimizer(mwe, Gurobi.Optimizer)
+set_attribute(mwe, "Method", 2)
+set_attribute(mwe, "Crossover", 0)
+set_attribute(mwe, "PreDual", 0)
+
+
+optimize!(mwe)
+
+
+
+# User-callback calls 148, time in user-callback 0.00 sec
+
+primal_status(mwe)       # FEASIBLE_POINT::ResultStatusCode = 1
+dual_status(mwe)         # FEASIBLE_POINT::ResultStatusCode = 1
+termination_status(mwe)  # OPTIMAL::TerminationStatusCode = 1
+
+solution_summary(mwe)
+
+# * Solver : Gurobi
+
+# * Status
+#   Result count       : 1
+#   Termination status : OPTIMAL
+#   Message from the solver:
+#   "Model was solved to optimality (subject to tolerances), and an optimal solution is available."
+
+# * Candidate solution (result #1)
+#   Primal status      : FEASIBLE_POINT
+#   Dual status        : FEASIBLE_POINT
+#   Objective value    : 2.76039e+05
+
+# * Work counters
+#   Solve time (sec)   : 4.66490e-03
+#   Barrier iterations : 30
+#   Node count         : 0
+
+has_values(mwe)  # true
+has_duals(mwe)   # true
+
+objective_value(mwe)       # 276039.476076866 (true value: 2.7704847864e+05)
+dual_objective_value(mwe)  # ERROR: Gurobi Error 10005: Unable to retrieve attribute 'ObjBound'
+
+objective_function(mwe)    # θ
+value(first(keys(objective_function(mwe).terms)))           # 277822.2353388086
+
+# way higher than the tolerances?
+
+set_attribute(mwe, "NumericFocus", 3)
+set_attribute(mwe, "OptimalityTol", 1e-9)
+set_attribute(mwe, "FeasibilityTol", 1e-9)
+set_attribute(mwe, "BarConvTol", 1e-16)
+optimize!(mwe)
+
+# prints "Sub-optimal termination - objective 2.76103058e+05"
+dual_status(mwe)  # UNKNOWN_RESULT_STATUS::ResultStatusCode = 8
+
+# Same result
+
+_m = Model(Gurobi.Optimizer)
+@variable(_m, x >= 0)
+@objective(_m, Min, x)
+optimize!(_m)
