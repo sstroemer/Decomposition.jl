@@ -449,6 +449,7 @@ end
 
 include("model.jl")
 include("benders/benders.jl")
+include("external_frameworks/general.jl")
 
 # --------------------------------------------------------------------
 
@@ -457,13 +458,18 @@ orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MP
 # set_optimizer(orig_model, HiGHS.Optimizer)
 # optimize!(orig_model)                       # "ns070.MPS" => 2.7704847864e+05, "national_scale.mps" => 5.8213980798e+06 
 
-model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model))
+model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 120, nof_temporal_splits = 5)
 
 # 6.740 ms (202303 allocs: 14.801 MiB)
 # @b model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1)))
 # @profview lpm = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1)))
 # @objective(lpm, Min, sum(model.lpmd.c[i] * lpm[:x][i] for i in collect(axes(model.lpmd.A, 2))) + model.lpmd.c_offset)
 # optimize!(lpm)   
+
+generate_annotation(model, Calliope())
+
+print(model.models[3])
+model.lpmd.variables[[24, 1961, 4226]]
 
 design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
 design_vs_idx = [index(v).value for v in all_variables(orig_model) if any(occursin(el, name(v)) for el in design_vs)]
@@ -523,26 +529,45 @@ for s in 1:nof_t_splits
     end
 end
 
-append!(idx_main_vars, getfield.(index.(decomposed_variables), :value))
+_idx = []
+append!(_idx, design_vs_idx)
+append!(_idx, getfield.(index.(decomposed_variables), :value))
 
-ama = create_adjacency_matrix(model.lpmd.A, idx_main_vars)
+
 using Graphs
+ama = create_adjacency_matrix(model.lpmd.A, _idx)
 g = SimpleGraph(ama)
 cc = connected_components(g)
 
-_tmp = nothing
 for component in cc
-    if (length(component) > 1) || !(component[1] in idx_main_vars)
-        constraints_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
-        _tmp = model_from_lp(
+    if (length(component) > 1) || !(component[1] in _idx)
+        idx_con_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
+        idx_var_in_component = findall((sum(nzA[idx_con_in_component, :]; dims=1) .!= 0)[1, :])
+        
+        m_sub = model_from_lp(
             model.lpmd,
-            sort(collect(Set(vcat(component, idx_main_vars)))), # TODO: do not consider the "decomposed" ones here, that do not belong to this block ...
-            constraints_in_component
+            idx_var_in_component,
+            idx_con_in_component
         )
-        break
+
+        push!(model.models, m_sub)
+        push!(model.idx_model_vars, idx_var_in_component)       
+        push!(model.idx_model_cons, idx_con_in_component)
     end
 end
 
+# var_appears_where = Dict(i => Set() for i in axes(model.lpmd.A, 2))
+# for i in eachindex(model.models)
+#     for vi in model.idx_model_vars[i]
+#         push!(var_appears_where[vi], i)
+#     end
+# end
+
+# for (k, v) in var_appears_where
+#     if length(v) == 0
+#         println("Variable $k [$(model.lpmd.variables[k])] appears in models: ", v)
+#     end
+# end
 
 
 # --------------------------------------------------------------------
