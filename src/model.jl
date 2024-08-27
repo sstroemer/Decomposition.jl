@@ -49,7 +49,8 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
     # TODO: transform single variable constraints into bounds
 
-    model = direct_model(Gurobi.Optimizer())
+    model = direct_model(Gurobi.Optimizer(GRB_ENV))
+    # model = direct_model(HiGHS.Optimizer())
 
     # Create variables, and set bounds.
     @variable(model, x[i = idx_v])
@@ -166,41 +167,25 @@ end
 Helper function to get the graph structure.
 """
 function create_adjacency_matrix(A::SparseArrays.SparseMatrixCSC, rm::Set{Int64})
-    n = size(A, 2)
-    ama = SparseArrays.spzeros(Int, n, n)
-
-    # @infiltrate
-    # nzA = A .!= 0
-    # rvs = rowvals(nzA)
-    # for vi in 1:size(A, 2)
-    #     rows = rvs[nzrange(nzA, vi)]
-
-    #     for row in rows
-    #         for var in A[row, :].nzind
-    #             var == vi && continue
-    #             ama[vi, var] = 1
-    #         end
-    #     end
-    # end
-
-    # # Variable i is contained in
-    # rows = rowvals(A)[nzrange(nzA, vi)]
-    # # which contains the following total variables
-    # vars = A[853, :].nzind
+    tA = SparseArrays.SparseMatrixCSC((A .!= 0)')
+    rvs = SparseArrays.rowvals(tA)
+    
+    I = Int64[]
+    J = Int64[]
 
     for i in 1:size(A, 1)
-        nodes = A[i, :].nzind
-        for j in 1:length(nodes)
+        nodes = rvs[SparseArrays.nzrange(tA, i)] # tA[:, i].nzind
+        for j in eachindex(nodes)
             u = nodes[j]
-            nodes[j] in rm && continue
-            for k in j+1:length(nodes)
+            (u in rm) && continue
+            for k in (j+1):length(nodes)
                 v = nodes[k]
-                nodes[k] in rm && continue
-                ama[u, v] = 1
-                # ama[v, u] = 1
+                (v in rm) && continue
+                push!(I, u)
+                push!(J, v)
             end
         end
     end
 
-    return LinearAlgebra.Symmetric(ama)
+    return LinearAlgebra.Symmetric(SparseArrays.sparse(I, J, 1, size(A, 2), size(A, 2)))
 end

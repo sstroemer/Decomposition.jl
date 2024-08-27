@@ -439,6 +439,9 @@ using JuMP
 import HiGHS, Gurobi
 import Statistics: mean
 using Chairmarks
+using Graphs
+import SparseArrays
+import LinearAlgebra
 
 import Printf
 function _print_iteration(k, args...)
@@ -451,14 +454,21 @@ include("model.jl")
 include("benders/benders.jl")
 include("external_frameworks/general.jl")
 
+const GRB_ENV = Gurobi.Env()
+
 # --------------------------------------------------------------------
 
+# T = 120
 orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
-# orig_model = read_from_file("national_scale.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 120, nof_temporal_splits = 5)
+
+# T = 2184
+orig_model = read_from_file("national_scale.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 2184, nof_temporal_splits = 52)
+
 # set_optimizer(orig_model, HiGHS.Optimizer)
 # optimize!(orig_model)                       # "ns070.MPS" => 2.7704847864e+05, "national_scale.mps" => 5.8213980798e+06 
 
-model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 120, nof_temporal_splits = 5)
 
 # 6.740 ms (202303 allocs: 14.801 MiB)
 # @b model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1)))
@@ -466,142 +476,42 @@ model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_mo
 # @objective(lpm, Min, sum(model.lpmd.c[i] * lpm[:x][i] for i in collect(axes(model.lpmd.A, 2))) + model.lpmd.c_offset)
 # optimize!(lpm)   
 
+# @b generate_annotation(model, Calliope()) # 87.802 ms (258452 allocs: 36.262 MiB)
+# @profview generate_annotation(model, Calliope())
 generate_annotation(model, Calliope())
 
+print(model.models[1])
 print(model.models[3])
 model.lpmd.variables[[24, 1961, 4226]]
 
-design_vs = ["flow_cap", "link_flow_cap", "source_cap", "storage_cap", "area_use"]
-design_vs_idx = [index(v).value for v in all_variables(orig_model) if any(occursin(el, name(v)) for el in design_vs)]
+# --------------------------------------------------------------------
 
-split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
+modify(model, SOLVE_AlgorithmIPM(:main))
+# modify(model, SOLVE_AlgorithmSimplex(:sub, :primal))
+# modify(model, SOLVE_AlgorithmIPM(:sub))
 
-T = 120 
-linking_cs = [
-    "balance_supply_with_storage",  # i x T
-    "balance_storage",              # i x T
-    "ramping_up",                   # i x (T - 2)
-    "ramping_down"                  # i x (T - 2)
-]
-temp_vs = Dict()
-for csn in linking_cs
-    linking_cs_idx = [i for i in axes(model.lpmd.A, 1) if occursin(csn, name(model.lpmd.affine_constraints[i]))]
-
-    temp_vs_idx = findall(((sum(model.lpmd.A[linking_cs_idx, :] .< 0; dims=1) .== 1) .& (sum(model.lpmd.A[linking_cs_idx, :] .> 0; dims=1) .== 1))[1, :])
-    
-    if csn in ["balance_supply_with_storage", "balance_storage"]
-        vec = model.lpmd.variables[temp_vs_idx]
-        temp_vs[csn] = split_vec(vec, T)
-    elseif csn in ["ramping_up", "ramping_down"]
-        vec = model.lpmd.variables[temp_vs_idx]
-        temp_vs[csn] = vcat.(nothing, split_vec(vec, T - 2), nothing)
-    end
+for sm in bd_subs(model)
+    # set_attribute(sm, "presolve", "off")
+    set_attribute(sm, "InfUnbdInfo", 1)
+    set_attribute(sm, "DualReductions", 0)
 end
 
-# --------------------------------------------------------------------
-
-v_main = BitVector(any(occursin(el, name(v)) for el in design_vs) for v in all_variables(orig_model))
-v_sub = .~v_main
-nzA = (model.lpmd.A .!= 0)
-has_main_vars = nzA * v_main .!= 0
-has_sub_vars = nzA * v_sub .!= 0
-
-idx_main_vars = design_vs_idx
-idx_main_cons = findall(has_main_vars .& (.~has_sub_vars))
-
-# --------------------------------------------------------------------
-
-nof_t_splits = 5
-len_of_t_split = T ÷ nof_t_splits
-
-decomposed_variables = []
-selected_temp_variables = []
-for s in 1:nof_t_splits
-    t_from = 1 + (s-1) * len_of_t_split
-    t_to = s * len_of_t_split
-
-    for (k, v) in temp_vs
-        for el in v
-            isnothing(el[t_from]) || push!(decomposed_variables, el[t_from])
-            isnothing(el[t_to]) || push!(decomposed_variables, el[t_to])
-            append!(selected_temp_variables, el[t_from+1:t_to-1])
-        end
-    end
-end
-
-_idx = []
-append!(_idx, design_vs_idx)
-append!(_idx, getfield.(index.(decomposed_variables), :value))
-
-
-using Graphs
-ama = create_adjacency_matrix(model.lpmd.A, _idx)
-g = SimpleGraph(ama)
-cc = connected_components(g)
-
-for component in cc
-    if (length(component) > 1) || !(component[1] in _idx)
-        idx_con_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
-        idx_var_in_component = findall((sum(nzA[idx_con_in_component, :]; dims=1) .!= 0)[1, :])
-        
-        m_sub = model_from_lp(
-            model.lpmd,
-            idx_var_in_component,
-            idx_con_in_component
-        )
-
-        push!(model.models, m_sub)
-        push!(model.idx_model_vars, idx_var_in_component)       
-        push!(model.idx_model_cons, idx_con_in_component)
-    end
-end
-
-# var_appears_where = Dict(i => Set() for i in axes(model.lpmd.A, 2))
-# for i in eachindex(model.models)
-#     for vi in model.idx_model_vars[i]
-#         push!(var_appears_where[vi], i)
-#     end
-# end
-
-# for (k, v) in var_appears_where
-#     if length(v) == 0
-#         println("Variable $k [$(model.lpmd.variables[k])] appears in models: ", v)
-#     end
-# end
-
-
-# --------------------------------------------------------------------
-
-m_main = model_from_lp(model.lpmd, idx_main_vars, idx_main_cons)
-m_sub = model_from_lp(model.lpmd, collect(axes(model.lpmd.A, 2)), collect(axes(model.lpmd.A, 1))) #collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
-
-push!(model.models, m_main)
-push!(model.models, m_sub)
-
-push!(model.idx_model_vars, idx_main_vars)
-push!(model.idx_model_vars, collect(axes(model.lpmd.A, 2)))
-
-push!(model.idx_model_cons, idx_main_cons)
-push!(model.idx_model_cons, collect(axes(model.lpmd.A, 1))) # collect(i for i in axes(model.lpmd.A, 1) if i ∉ idx_main_cons))
-
-# --------------------------------------------------------------------
-
-set(model, SOLVE_AlgorithmIPM(:main))
-set(model, SOLVE_AlgorithmSimplex(:sub, :primal))
-set(model, SOLVE_AlgorithmIPM(:sub))
-
-set_attribute(bd_main(model), "PreDual", 1)
-
+# set_attribute(bd_main(model), "PreDual", 1)
 # set_attribute(bd_main(model), "NumericFocus", 3)  # primal simplex for sub, with presolve, leads to infeasbilities in main without NumericFocus
 # set_attribute(bd_sub(model), "Presolve", 1)
-set_attribute(bd_sub(model), "InfUnbdInfo", 1)
-set_attribute(bd_sub(model), "DualReductions", 0)
+
+# bd_modify(model, BD_MainCutTypeSingle())
+bd_modify(model, BD_MainCutTypeMulti())
 
 bd_modify(model, BD_MainObjectiveObj())
-bd_modify(model, BD_SubObjectivePure(1))
+bd_modify(model, BD_SubObjectivePure())
 bd_modify(model, MainVirtualBounds(0.0, 1e6))
 
-bd_modify(model, BD_SubEnsureFeasibilityLinked(1, 1e6))
+# bd_modify(model, BD_SubEnsureFeasibilityLinked(-1, 1e6))
+# bd_modify(model, BD_SubEnsureFeasibilityRegex(-1, 1e4, r".*(variables\(storage\)).*"))
+
+# NOTE:
+# one problem with feasibility cuts seems to be selecting proper "temporal values", e.g., for storages
 
 model.stats[:upper_bound] = Inf
 model.stats[:lower_bound] = -Inf
@@ -610,77 +520,61 @@ for i in 1:100
     optimize!(bd_main(model))
 
     # Extract main-model results.
-    res_main_θ = value(bd_main(model)[:θ])
+    res_main_θ = value.(bd_main(model)[:θ])
     res_main_obj = objective_value(bd_main(model))
     res_main_obj_f_val = value(objective_function(bd_main(model)))  # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
     res_main_obj_exp = bd_has_attribute_type(model, BD_MainObjectiveCon) ? value(bd_main(model)[:obj]) : nothing
+    sol = value.(bd_main(model)[:x])
 
     # Update lower bound.
     model.stats[:lower_bound] = res_main_obj
 
-    sol = value.(bd_main(model)[:x])
-    for s in 1:(length(model.models) - 1), i in sol.axes[1]
-        fix(bd_sub(model; index=s)[:x][i], sol[i]; force=true)
-    end
+    # for s in 1:(length(model.models) - 1), i in sol.axes[1]
+    #     fix(bd_sub(model; index=s)[:x][i], sol[i]; force=true)
+    # end
+    bd_update_fixed_variables(model, sol)
 
     # Check if we can remove the lower bound.
-    if has_lower_bound(bd_main(model)[:θ]) && res_main_θ > lower_bound(bd_main(model)[:θ])
-        delete_lower_bound(bd_main(model)[:θ])
+    # TODO: update this for potentially multiple sub-models, and move it to a unique modify function
+    # if has_lower_bound(bd_main(model)[:θ]) && res_main_θ > lower_bound(bd_main(model)[:θ])
+    #     delete_lower_bound(bd_main(model)[:θ])
+    # end
+
+    for m_sub in bd_subs(model)
+        set_silent(m_sub)
+        optimize!(m_sub)
     end
 
-    set_silent(bd_sub(model; index=1))
-    optimize!(bd_sub(model; index=1))
+    added_cuts = bd_generate_cuts(model, sol)
 
-    if primal_status(bd_sub(model; index=1)) == MOI.NO_SOLUTION
-        if dual_status(bd_sub(model; index=1)) != MOI.INFEASIBILITY_CERTIFICATE
-            @error "Turn off presolve, or any setting blocking extraction of dual rays"
-        else
-            exp_cut = AffExpr(0.0)
-            for i in sol.axes[1] # TODO: handle other sub-models
-                λ = dual(FixRef(bd_sub(model; index=1)[:x][i]))
-                add_to_expression!(exp_cut, λ, bd_main(model)[:x][i])
-                add_to_expression!(exp_cut, λ, -fix_value(bd_sub(model; index=1)[:x][i]))
-            end
-    
-            push!(model.cuts[:feasibility], @constraint(bd_main(model), exp_cut <= 0))
-            
-            println(lpad(model.stats[:iteration], 8), " │  . . . . adding feasibility cut . . . .")
-        end
+    if added_cuts[1] > 0
+        # At least one feasibility cut was added.
+        println(lpad(model.stats[:iteration], 8), " │ . . . . adding feasibility cut(s) . . .")
     else
         # Update upper bound.
         ub_candidate = (
             if bd_has_attribute_type(model, BD_MainObjectiveCon)
-                res_main_obj_exp + objective_value(bd_sub(model; index=1))
+                res_main_obj_exp + sum(objective_value(sm) for sm in bd_subs(model))
             else
-                res_main_obj_f_val - res_main_θ + objective_value(bd_sub(model; index=1))
+                res_main_obj_f_val - sum(res_main_θ) + sum(objective_value(sm) for sm in bd_subs(model))
             end
         )
         if ub_candidate < model.stats[:upper_bound]
             model.stats[:upper_bound] = ub_candidate
             # TODO: update best solution
         end
-
-        # Update stats.
-        # TODO: Move this into a function that is bound to the "stats" struct
-        model.stats[:gap_abs] = model.stats[:upper_bound] - model.stats[:lower_bound]
-        model.stats[:gap_rel] = model.stats[:gap_abs] / abs(model.stats[:upper_bound])  # TODO: check, use ub or lb here? (gurobi)
-
-        exp_cut = AffExpr(objective_value(bd_sub(model; index=1)))
-        for i in sol.axes[1]
-            λ = reduced_cost(bd_sub(model; index=1)[:x][i])
-            add_to_expression!(exp_cut, λ, bd_main(model)[:x][i])
-            add_to_expression!(exp_cut, λ, -sol[i])
-        end
-
-        if bd_has_attribute_type(model, BD_MainObjectiveCon)
-            exp_cut += bd_main(model)[:obj]
-        end
-
-        push!(model.cuts[:optimality], @constraint(bd_main(model), bd_main(model)[:θ] >= exp_cut))
-
-        # TODO: Move the printing into the next_iter function
-        _print_iteration(model.stats[:iteration], model.stats[:lower_bound], model.stats[:upper_bound], model.stats[:gap_rel])
     end
+
+    # Update stats.
+    # TODO: Move this into a function that is bound to the "stats" struct
+    model.stats[:gap_abs] = model.stats[:upper_bound] - model.stats[:lower_bound]
+    model.stats[:gap_rel] = isfinite(model.stats[:gap_abs]) ? model.stats[:gap_abs] / abs(model.stats[:upper_bound]) : Inf  # TODO: check, use ub or lb here? (gurobi)
+
+
+    # println(lpad(model.stats[:iteration], 8), " │  . . . . adding feasibility cut . . . .")
+
+    # TODO: Move the printing into the next_iter function
+    _print_iteration(model.stats[:iteration], model.stats[:lower_bound], model.stats[:upper_bound], model.stats[:gap_rel])
 
     model.stats[:iteration] += 1
 end
