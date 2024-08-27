@@ -1,11 +1,14 @@
 abstract type DecompositionAttribute end
 abstract type DecompositionQuery end
 
-@kwdef struct DecomposedModel2
+@kwdef struct DecomposedModel4
     monolithic::JuMP.Model
-
     lpmd::JuMP.LPMatrixData
 
+    T::Int64
+    nof_temporal_splits::Int64
+
+    # TODO: Store these as (sorted) vector (is that even needed?) and as set (for faster lookup)
     idx_model_vars::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
     idx_model_cons::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
 
@@ -33,9 +36,9 @@ abstract type DecompositionQuery end
         :optimality => ConstraintRef[],
     )  # TODO: track which cut is created by which iteration (inside the stats struct)
 end
-DecomposedModel = DecomposedModel2
+DecomposedModel = DecomposedModel4
 
-function set(::DecomposedModel, ::DecompositionAttribute)
+function modify(::DecomposedModel, ::DecompositionAttribute)
     @error "Not implemented"
 end
 
@@ -122,7 +125,7 @@ struct SOLVE_AlgorithmIPM <: DecompositionAttribute
     SOLVE_AlgorithmIPM(model::Symbol) = new(model, false)
 end
 
-function set(model::DecomposedModel, attribute::SOLVE_AlgorithmSimplex)
+function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmSimplex)
     models = attribute.model == :main ? [bd_main(model)] : bd_subs(model)
     for m in models
         solver = solver_name(m)
@@ -143,7 +146,7 @@ function set(model::DecomposedModel, attribute::SOLVE_AlgorithmSimplex)
     end
 end
 
-function set(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
+function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
     models = attribute.model == :main ? [bd_main(model)] : bd_subs(model)
     for m in models
         solver = solver_name(m)
@@ -162,9 +165,28 @@ end
 """
 Helper function to get the graph structure.
 """
-function create_adjacency_matrix(A, rm)
+function create_adjacency_matrix(A::SparseArrays.SparseMatrixCSC, rm::Set{Int64})
     n = size(A, 2)
-    adjacency_matrix = zeros(Int, n, n)
+    ama = SparseArrays.spzeros(Int, n, n)
+
+    # @infiltrate
+    # nzA = A .!= 0
+    # rvs = rowvals(nzA)
+    # for vi in 1:size(A, 2)
+    #     rows = rvs[nzrange(nzA, vi)]
+
+    #     for row in rows
+    #         for var in A[row, :].nzind
+    #             var == vi && continue
+    #             ama[vi, var] = 1
+    #         end
+    #     end
+    # end
+
+    # # Variable i is contained in
+    # rows = rowvals(A)[nzrange(nzA, vi)]
+    # # which contains the following total variables
+    # vars = A[853, :].nzind
 
     for i in 1:size(A, 1)
         nodes = A[i, :].nzind
@@ -174,11 +196,11 @@ function create_adjacency_matrix(A, rm)
             for k in j+1:length(nodes)
                 v = nodes[k]
                 nodes[k] in rm && continue
-                adjacency_matrix[u, v] = 1
-                adjacency_matrix[v, u] = 1
+                ama[u, v] = 1
+                # ama[v, u] = 1
             end
         end
     end
 
-    return adjacency_matrix
+    return LinearAlgebra.Symmetric(ama)
 end
