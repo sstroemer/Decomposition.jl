@@ -442,12 +442,21 @@ using Chairmarks
 using Graphs
 import SparseArrays
 import LinearAlgebra
+import OrderedCollections: OrderedDict
+import JSON3
+import SHA
 
 import Printf
 function _print_iteration(k, args...)
-    f(x) = Printf.@sprintf("%11.3e", x)
-    println(lpad(k, 8), " │ ", join(f.(args), " │ "))
-    return
+    f(x) = (x isa Int) || (x isa AbstractString) ? lpad(x, 6) : Printf.@sprintf("%11.3e", x)
+    output = string("│ ", f(k), " │ ", join(f.(args), " │ "), " │")
+    println(output)
+    return output
+end
+function showtostr(obj::Any)
+    sio = IOBuffer()
+    show(sio, obj)
+    return String(take!(sio))    
 end
 
 include("model.jl")
@@ -456,18 +465,33 @@ include("external_frameworks/general.jl")
 
 const GRB_ENV = Gurobi.Env()
 
+# using Logging
+# global_logger(ConsoleLogger(stderr, Logging.Debug))
+
 # --------------------------------------------------------------------
 
-# T = 120
-orig_model = read_from_file("ns070.MPS"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
-model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 120, nof_temporal_splits = 5)
+T = 8760
+nof_temporal_splits = Dict(120 => 3, 2184 => 52, 4368 => 48, 8760 => 120)[T]
 
-# T = 2184
-orig_model = read_from_file("national_scale.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
-model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_model), T = 2184, nof_temporal_splits = 52)
+orig_model = read_from_file("national_scale_$T.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
+lpmd = lp_matrix_data(orig_model)
+# clamp!(lpmd.c, -1e5, 1e5)
+model = DecomposedModel(;
+    name = "national_scale_$(T)",
+    monolithic = orig_model,
+    lpmd,
+    T,
+    nof_temporal_splits,
+    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV),   # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
+    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),    # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
+);
 
-# set_optimizer(orig_model, HiGHS.Optimizer)
-# optimize!(orig_model)                       # "ns070.MPS" => 2.7704847864e+05, "national_scale.mps" => 5.8213980798e+06 
+# set_optimizer(orig_model, Gurobi.Optimizer)
+# optimize!(orig_model)
+#  120 => 2.7704847864e+05
+# 2184 => 5.8213980798e+06
+# 4368 => 1.1148105940e+07
+# 8760 => 2.238932354e+07 18.43 seconds
 
 
 # 6.740 ms (202303 allocs: 14.801 MiB)
@@ -480,9 +504,9 @@ model = DecomposedModel(; monolithic = orig_model, lpmd = lp_matrix_data(orig_mo
 # @profview generate_annotation(model, Calliope())
 generate_annotation(model, Calliope())
 
-print(model.models[1])
-print(model.models[3])
-model.lpmd.variables[[24, 1961, 4226]]
+# print(model.models[1])
+# print(model.models[3])
+# model.lpmd.variables[[24, 1961, 4226]]
 
 # --------------------------------------------------------------------
 
@@ -490,15 +514,18 @@ modify(model, SOLVE_AlgorithmIPM(:main))
 # modify(model, SOLVE_AlgorithmSimplex(:sub, :primal))
 # modify(model, SOLVE_AlgorithmIPM(:sub))
 
+# bd_modify(model, BD_SubFeasiblityCutsAlways())
+bd_modify(model, BD_SubFeasiblityCutsOnDemand(false))
+
 for sm in bd_subs(model)
-    # set_attribute(sm, "presolve", "off")
-    set_attribute(sm, "InfUnbdInfo", 1)
-    set_attribute(sm, "DualReductions", 0)
+    # set_attribute(sm, "Method", 1)
+    # set_attribute(sm, "LPWarmStart", 0)
+    # set_attribute(sm, "PreDual", 1)
 end
 
 # set_attribute(bd_main(model), "PreDual", 1)
 # set_attribute(bd_main(model), "NumericFocus", 3)  # primal simplex for sub, with presolve, leads to infeasbilities in main without NumericFocus
-# set_attribute(bd_sub(model), "Presolve", 1)
+# set_attribute(bd_main(model), "Presolve", 2)
 
 # bd_modify(model, BD_MainCutTypeSingle())
 bd_modify(model, BD_MainCutTypeMulti())
@@ -513,26 +540,38 @@ bd_modify(model, MainVirtualBounds(0.0, 1e6))
 # NOTE:
 # one problem with feasibility cuts seems to be selecting proper "temporal values", e.g., for storages
 
-model.stats[:upper_bound] = Inf
-model.stats[:lower_bound] = -Inf
-for i in 1:100
-    set_silent(bd_main(model))
-    optimize!(bd_main(model))
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+# TODO: HIGH PRIO
+# READ::::: https://discourse.julialang.org/t/simplifying-lp-for-repeated-resolving/97528/10
+# ==> warmstarting sub problems ==> Lene
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
+
+model.info[:stats][:started] = time_ns()
+for i in 1:150
+    est_Δt_wall = OrderedDict(:main => 0.0, :subs => [], :aux => 0.0)
+
+    est_Δt_wall[:main] += (@timed begin
+        optimize!(bd_main(model))
+    end).time
 
     # Extract main-model results.
-    res_main_θ = value.(bd_main(model)[:θ])
-    res_main_obj = objective_value(bd_main(model))
-    res_main_obj_f_val = value(objective_function(bd_main(model)))  # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
-    res_main_obj_exp = bd_has_attribute_type(model, BD_MainObjectiveCon) ? value(bd_main(model)[:obj]) : nothing
-    sol = value.(bd_main(model)[:x])
+    est_Δt_wall[:aux] += (@timed begin
+        model.info[:results][:main][:θ] = value.(bd_main(model)[:θ])
+        model.info[:results][:main][:obj] = objective_value(bd_main(model))
+        model.info[:results][:main][:obj_f_val] = value(objective_function(bd_main(model)))  # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+        model.info[:results][:main][:obj_exp] = bd_has_attribute_type(model, BD_MainObjectiveCon) ? value(bd_main(model)[:obj]) : nothing
+        model.info[:results][:main][:sol] = value.(bd_main(model)[:x])            
+    end).time
 
-    # Update lower bound.
-    model.stats[:lower_bound] = res_main_obj
+    # TODO: we could abort here if the gap is small enough (saving one final sub-model iteration)
 
-    # for s in 1:(length(model.models) - 1), i in sol.axes[1]
-    #     fix(bd_sub(model; index=s)[:x][i], sol[i]; force=true)
-    # end
-    bd_update_fixed_variables(model, sol)
+    est_Δt_wall[:aux] += (@timed begin
+        bd_update_fixed_variables(model, model.info[:results][:main][:sol])
+    end).time
 
     # Check if we can remove the lower bound.
     # TODO: update this for potentially multiple sub-models, and move it to a unique modify function
@@ -540,66 +579,259 @@ for i in 1:100
     #     delete_lower_bound(bd_main(model)[:θ])
     # end
 
-    for m_sub in bd_subs(model)
-        set_silent(m_sub)
-        optimize!(m_sub)
+    # Solve the sub-models.
+    model.info[:results][:subs] = []
+    for i in 1:(length(model.models) - 1)
+        m_sub = bd_sub(model; index=i)
+
+        push!(
+            est_Δt_wall[:subs],
+            (@timed begin
+                # ----------------------------------------
+                optimize!(m_sub)
+
+                # Check if we should handle on-demand feasibility cut modifications.
+                if bd_has_attribute_type(model, BD_SubFeasiblityCutsOnDemand)
+                    sfcod = bd_get_attribute(model, BD_SubFeasiblityCutsOnDemand)
+
+                    # Check if we can derive a valid cut from that.
+                    cut_type = bd_check_cut_type(m_sub; verbose=false)
+                    if cut_type == :error && !sfcod.state[i]
+                        # No optimality cut, and we cannot get a feasibility cut from the solver.
+                        # But: We can activate the feasibility cut generation, and resolve the sub-model.
+                        bd_jump_configure_dualrays(model, i, true)
+                        # set_attribute(m_sub, "LPWarmStart", 1)
+                        optimize!(m_sub)
+                        # Now let's hope for the best (nothing else we could do here).
+                    elseif cut_type == :optimality && sfcod.state[i]
+                        # The sub-model allows optimality cuts, let's see if we shall turn of dual rays.
+                        # TODO: check if the model has been feasible for N iterations (config. N in BD_SubFeasiblityCutsOnDemand)
+                        bd_jump_configure_dualrays(model, i, false)
+                        # set_attribute(m_sub, "LPWarmStart", 2)
+                    else
+                        # Out of luck. Not doing anything here, since the cut extraction will properly fail later on.
+                    end
+                end
+                
+                push!(
+                    model.info[:results][:subs],
+                    Dict(
+                        :obj => is_solved_and_feasible(m_sub) ? objective_value(m_sub) : missing,
+                        :obj_dual => has_duals(m_sub) ? dual_objective_value(m_sub) : missing
+                    )
+                )
+                # ----------------------------------------
+            end).time
+        )    
     end
 
-    added_cuts = bd_generate_cuts(model, sol)
+    ret = @timed bd_generate_cuts(model, model.info[:results][:main][:sol])
+    added_cuts = ret.value   
+    est_Δt_wall[:aux] += ret.time
+    
+    # Pass added cuts and timings (in nanoseconds) to `next_iteration!`.
+    next_iteration!(model, added_cuts, Dict(k => 1e9 * v for (k, v) in est_Δt_wall))
+end
 
-    if added_cuts[1] > 0
-        # At least one feasibility cut was added.
-        println(lpad(model.stats[:iteration], 8), " │ . . . . adding feasibility cut(s) . . .")
-    else
-        # Update upper bound.
-        ub_candidate = (
-            if bd_has_attribute_type(model, BD_MainObjectiveCon)
-                res_main_obj_exp + sum(objective_value(sm) for sm in bd_subs(model))
-            else
-                res_main_obj_f_val - sum(res_main_θ) + sum(objective_value(sm) for sm in bd_subs(model))
-            end
+save(model)
+# TODO: bd_query(model, BD_SubFeasibility())
+
+include("visualization.jl")
+
+# --------------------------------------------------------------------
+# REL GAP over ITERATION
+# --------------------------------------------------------------------
+compare(
+    ["88725ff", "a311d66", "129ea42", "ca16bda", "cb707c9"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=0:length(mi["history"]) - 1,
+            name="$(mi["inputs"]["splits"]) splits",
         )
-        if ub_candidate < model.stats[:upper_bound]
-            model.stats[:upper_bound] = ub_candidate
-            # TODO: update best solution
-        end
-    end
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Iteration",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
 
-    # Update stats.
-    # TODO: Move this into a function that is bound to the "stats" struct
-    model.stats[:gap_abs] = model.stats[:upper_bound] - model.stats[:lower_bound]
-    model.stats[:gap_rel] = isfinite(model.stats[:gap_abs]) ? model.stats[:gap_abs] / abs(model.stats[:upper_bound]) : Inf  # TODO: check, use ub or lb here? (gurobi)
+# --------------------------------------------------------------------
+# REL GAP over TIME
+# --------------------------------------------------------------------
+compare(
+    ["88725ff", "a311d66", "129ea42", "ca16bda", "cb707c9"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name="$(mi["inputs"]["splits"]) splits",
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
+
+# --------------------------------------------------------------------
+# LOWER BOUND over TIME
+# --------------------------------------------------------------------
+compare(
+    ["88725ff", "a311d66", "129ea42", "ca16bda", "cb707c9"],
+    [
+        (mi) -> trace_bounds(mi)[1],
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name="$(mi["inputs"]["splits"]) splits",
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Relative gap",
+        xaxis_range=[0, 20],
+        yaxis_range=log10.([2e5, 13e6]),
+    );
+    additional_traces=[
+        scatter(x = [0, 60], y = repeat([1.1148105940e+07], 2), mode="lines", name="true", line=attr(color="black", width=3, dash="dot")),
+        scatter(x = [3.08, 3.08], y = [0, 15e6], mode="lines", name="true", line=attr(color="black", width=3, dash="dot")),
+    ]
+)
+
+# 5b54bec => 8760 default
+
+# --------------------------------------------------------------------
+# (select:split:48) REL GAP over ITERATION
+# --------------------------------------------------------------------
+_legend_names = ["feasibility (on demand)", "feasibility (always)", "relax (full)", "relax (storage)"]
+compare(
+    ["129ea42", "9b0ff83", "0a91362", "9c10568"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=0:length(mi["history"]) - 1,
+            name=popfirst!(_legend_names),
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Iteration",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
+
+# --------------------------------------------------------------------
+# (select:split:48) REL GAP over TIME
+# --------------------------------------------------------------------
+_legend_names = ["feasibility (on demand)", "feasibility (always)", "relax (full)", "relax (storage)"]
+compare(
+    ["129ea42", "9b0ff83", "0a91362", "9c10568"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name=popfirst!(_legend_names),
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
+
+# --------------------------------------------------------------------
+# (select:split:48:feasibility:ondemand) REL GAP over ITERATION
+# --------------------------------------------------------------------
+_legend_names = ["default (dual simplex)", "sub: predual", "sub: predual + numericfocus=3", "sub: primal simplex", "sub: lpwarmstart=2", "sub: lpwarmstart=0", "sub: lpwarmstart cond."]
+compare(
+    ["129ea42", "a0cb442", "ff144d9", "826d4ec", "4401e47", "e497a03", "88a8421"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=0:length(mi["history"]) - 1,
+            name=popfirst!(_legend_names),
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Iteration",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
+
+# --------------------------------------------------------------------
+# (select:split:48:feasibility:ondemand) REL GAP over TIME
+# --------------------------------------------------------------------
+_legend_names = ["default (dual simplex)", "sub: predual", "sub: predual + numericfocus=3", "sub: primal simplex", "sub: lpwarmstart=2", "sub: lpwarmstart=0", "sub: lpwarmstart cond."]
+compare(
+    ["129ea42", "a0cb442", "ff144d9", "826d4ec", "4401e47", "e497a03", "88a8421"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name=popfirst!(_legend_names),
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.5Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    )
+)
 
 
-    # println(lpad(model.stats[:iteration], 8), " │  . . . . adding feasibility cut . . . .")
 
-    # TODO: Move the printing into the next_iter function
-    _print_iteration(model.stats[:iteration], model.stats[:lower_bound], model.stats[:upper_bound], model.stats[:gap_rel])
 
-    model.stats[:iteration] += 1
+prefixes = ["asd", "5sd", "asdf"]
+
+_(549bc21|549bc23|549b11)\.djl\.json$
+
+
+
+readdir("out")
+
+model_info = JSON3.read("out/national_scale_2184_549bc21.djl.json", Dict; allow_inf=true)
+
+max_iter = length(model_info["history"]) - 1
+
+lb = Vector{Float64}([model_info["history"][1]["lower_bound"]])
+ub = Vector{Float64}([model_info["history"][1]["upper_bound"]])
+for entry in model_info["history"][2:end]
+    push!(lb, max(lb[end], entry["lower_bound"]))
+    push!(ub, min(ub[end], entry["upper_bound"]))
 end
 
-
-bd_query(model, BD_SubFeasibility())
-
-if has_lower_bound(bd_main(model)[:θ])
-    delete_lower_bound(bd_main(model)[:θ])
-end
+plot([
+    scatter(x=0:max_iter, y=rel_gap.(lb, ub), mode="lines", line_shape="hv")
+])
 
 
 
-_m = Model(Gurobi.Optimizer)
+
+
+_m = Model(HiGHS.Optimizer)
 
 @variable(_m, x[1:2] >= 0)
 @variable(_m, y[1:2])
-@variable(_m, z[1:2])
 
-
-@constraint(_m, y .== z)
-
-@constraint(_m, z[1] <= 1)
-@constraint(_m, z[2] <= 1)
-
+fix.(y, 1.0; force=true)
 
 c1 = @constraint(_m, c1, x[1] <= y[1])
 c2 = @constraint(_m, c2, sum(x) >= 3)
@@ -610,7 +842,9 @@ c3 = @constraint(_m, c3, x[2] <= y[2])
 # for gurobi:
 set_attribute(_m, "InfUnbdInfo", 1)
 set_attribute(_m, "DualReductions", 0)
-# set_attribute(_m, "presolve", "off")
+# for highs:
+set_attribute(_m, "presolve", "off")
+
 optimize!(_m)
 
 primal_status(_m) == MOI.NO_SOLUTION

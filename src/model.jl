@@ -1,7 +1,17 @@
 abstract type DecompositionAttribute end
 abstract type DecompositionQuery end
 
-@kwdef struct DecomposedModel6
+function Base.show(io::IO, attribute::DecompositionAttribute)
+    str = "$(typeof(attribute))("
+    str *= join(["$(prop)=$(getfield(attribute, prop))" for prop in propertynames(attribute)], ",")
+    str *= ")"
+    print(io, str)
+    return nothing
+end
+
+@kwdef struct DecomposedModel9
+    name::String
+
     monolithic::JuMP.Model
     lpmd::JuMP.LPMatrixData
 
@@ -21,29 +31,34 @@ abstract type DecompositionQuery end
 
     decomposition_maps = Dict{Any, Any}()
 
-    info = Dict{Symbol, Any}(
-        :stats => Dict(
+    info = OrderedDict{Symbol, Any}(
+        :stats => OrderedDict(
             :created => time_ns(),
             :started => missing,
         ),
         :history => Vector{Dict{Symbol, Any}}(),
-        :results => Dict{Symbol, Any}(
-            :main => Dict{Symbol, Any}(),
+        :results => OrderedDict{Symbol, Any}(
+            :main => OrderedDict{Symbol, Any}(),
             :subs => Vector{Dict}()
         )
     )
 
     attributes::Vector{DecompositionAttribute} = DecompositionAttribute[]
 
-    cuts = Dict{Symbol, Vector{ConstraintRef}}(
+    cuts = OrderedDict{Symbol, Vector{ConstraintRef}}(
         :feasibility => ConstraintRef[],
         :optimality => ConstraintRef[],
     )  # TODO: track which cut is created by which iteration (inside the stats struct)
-end
-DecomposedModel = DecomposedModel6
 
-_abs_gap(x::Float64, y::Float64) = abs(x - y)
-function _rel_gap(x::Float64, y::Float64)
+    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV)
+    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV)
+
+    log::Vector{String} = String[]
+end
+DecomposedModel = DecomposedModel9
+
+abs_gap(x::Float64, y::Float64) = abs(x - y)
+function rel_gap(x::Float64, y::Float64)
     tol = sqrt(eps(Float64))
     lower = min(x, y)
     upper = max(x, y)
@@ -60,8 +75,8 @@ end
 current_iteration(model::DecomposedModel) = length(model.info[:history])
 best_upper_bound(model::DecomposedModel) = minimum(it[:upper_bound] for it in model.info[:history]; init=+Inf)
 best_lower_bound(model::DecomposedModel) = maximum(it[:lower_bound] for it in model.info[:history]; init=-Inf)
-best_gap_abs(model::DecomposedModel) = _abs_gap(best_lower_bound(model), best_upper_bound(model))
-best_gap_rel(model::DecomposedModel) = _rel_gap(best_lower_bound(model), best_upper_bound(model))
+best_gap_abs(model::DecomposedModel) = abs_gap(best_lower_bound(model), best_upper_bound(model))
+best_gap_rel(model::DecomposedModel) = rel_gap(best_lower_bound(model), best_upper_bound(model))
 
 total_wall_time(model::DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history])
 total_cpu_time(model::DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history])
@@ -84,7 +99,7 @@ function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbo
     end
 
     # Find all cuts that were added in this iteration.
-    new_cuts = Dict(
+    new_cuts = OrderedDict(
         :feasibility => model.cuts[:feasibility][(end-nof_feas_cuts+1):end],
         :optimality => model.cuts[:optimality][(end-nof_opt_cuts+1):end],
     )
@@ -98,9 +113,13 @@ function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbo
     subs_wall_time = sum(maximum.(_batches))
 
     # Prepare and add the history entry.
-    entry = Dict(
+    entry = OrderedDict(
+        # TODO: include "quality criteria":
+        #       - whether all sub-models are: (1) feasible, (2) w/o the use of artificial slacks
+        #       - conditioning, ... of main and sub-models
+        #       - ...
         :iteration => iter,
-        :time => Dict(
+        :time => OrderedDict(
             :timestamp => curr_time,
             :wall => est_Δt_wall[:main] + subs_wall_time + est_Δt_wall[:aux],
             :cpu => curr_time - (iter == 0 ? model.info[:stats][:started] : model.info[:history][end][:time][:timestamp]),
@@ -108,9 +127,10 @@ function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbo
         ),
         :lower_bound => lb,
         :upper_bound => ub,
-        :gap_abs => _abs_gap(lb, ub),
-        :gap_rel => _rel_gap(lb, ub),
-        :added_cuts => new_cuts,
+        :gap_abs => abs_gap(lb, ub),
+        :gap_rel => rel_gap(lb, ub),
+        :added_cuts => OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts),
+        :added_cuts_con => new_cuts,
     )
     push!(model.info[:history], entry)
 
@@ -118,25 +138,32 @@ function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbo
     if verbose
         if iter == 0
             # Print motd-like header.
-            println("╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮")
-            println("│ >> Decomposition.jl <<                                              [version::0.1.0  //  algorithm::benders] │")
-            println("├────────┬───────────────────────────┬───────────────────────────┬───────────────────────────┬─────────────────┤")
-            println("│        │      objective bound      │      current best gap     │    est. execution time    │   added cuts    │")
-            println("├────────┼─────────────┬─────────────┼───────────────────────────┤─────────────┬─────────────┤────────┬────────┤")
-            println("│   iter │       lower │       upper │    absolute │    relative │    wall [s] │     cpu [s] │  feas. │   opt. │")
-            println("├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤")
+            motd = [
+                "╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
+                "│ >> Decomposition.jl <<                                              [version::0.1.0  //  algorithm::benders] │",
+                "├────────┬───────────────────────────┬───────────────────────────┬───────────────────────────┬─────────────────┤",
+                "│        │      objective bound      │      current best gap     │    est. execution time    │   added cuts    │",
+                "├────────┼─────────────┬─────────────┼───────────────────────────┤─────────────┬─────────────┤────────┬────────┤",
+                "│   iter │       lower │       upper │    absolute │    relative │    wall [s] │     cpu [s] │  feas. │   opt. │",
+                "├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤",  
+            ]
+            append!(model.log, motd)
+            println.(motd)
         end
 
-        _print_iteration(
-            iter,
-            best_lower_bound(model),
-            best_upper_bound(model),
-            best_gap_abs(model),
-            best_gap_rel(model),
-            Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
-            Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
-            length(model.cuts[:feasibility]),
-            length(model.cuts[:optimality]),
+        push!(
+            model.log,
+            _print_iteration(
+                iter,
+                best_lower_bound(model),
+                best_upper_bound(model),
+                best_gap_abs(model),
+                best_gap_rel(model),
+                Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
+                Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
+                length(model.cuts[:feasibility]),
+                length(model.cuts[:optimality]),
+            )
         )
     end
 
@@ -148,6 +175,50 @@ function check_termination(model::DecomposedModel)
     return false
 end
 
+function save(model::DecomposedModel)
+    sio = IOBuffer()
+    JSON3.pretty(
+        sio,
+        OrderedDict(
+            "meta" => OrderedDict(
+                "version" => "0.1.0",
+                "algorithm" => "benders",
+                "name" => model.name,
+                "created" => model.info[:stats][:created],
+                "started" => model.info[:stats][:started],
+            ),
+            "inputs" => OrderedDict(
+                "timesteps" => model.T,
+                "splits" => model.nof_temporal_splits,
+            ),
+            "attributes" => showtostr.(model.attributes),
+            "models" => OrderedDict(
+                "main" => showtostr(bd_main(model)),
+                "subs" => showtostr.(bd_subs(model)),
+            ),
+            "cuts" => OrderedDict(
+                "feasibility" => length(model.cuts[:feasibility]),
+                "optimality" => length(model.cuts[:optimality]),
+            ),
+            "history" => filter.(k -> (k.first != :added_cuts_con), model.info[:history]),
+            "log" => join(model.log, "\n"),
+        ),
+        JSON3.AlignmentContext(alignment=:Left, indent=2);
+        allow_inf=true
+    )
+    
+    json_str = String(take!(sio))
+    short_hash = bytes2hex(SHA.sha1(json_str))[1:7]
+    filename = "$(model.name)_$(short_hash).djl.json"
+
+    open(normpath(mkpath("out"), filename), "w") do f
+        write(f, json_str)
+        @info "Saved model" filename
+    end
+
+    return nothing
+end
+
 function modify(::DecomposedModel, ::DecompositionAttribute)
     @error "Not implemented"
 end
@@ -155,12 +226,11 @@ end
 attach_solver(model::JuMP.Model, solver) = set_optimizer(model, solver)  # TODO: use this to attach "BD" (or others)
 solve!(model::JuMP.Model) = optimize!(model)
 
-function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64})
+function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer)
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
     # TODO: transform single variable constraints into bounds
 
-    model = direct_model(Gurobi.Optimizer(GRB_ENV))
-    # model = direct_model(HiGHS.Optimizer())
+    model = direct_model(optimizer)
     set_silent(model)
 
     # Create variables, and set bounds.
@@ -256,6 +326,9 @@ function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmSimplex)
             @error "Setting `SOLVE_AlgorithmSimplex` is currently not supported for solver `$(solver)`"
         end
     end
+
+    push!(model.attributes, attribute)
+    return nothing
 end
 
 function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
@@ -272,6 +345,9 @@ function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
             @error "Setting `SOLVE_AlgorithmSimplex` is currently not supported for solver `$(solver)`"
         end
     end
+
+    push!(model.attributes, attribute)
+    return nothing
 end
 
 """

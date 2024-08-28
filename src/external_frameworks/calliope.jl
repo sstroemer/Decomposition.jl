@@ -70,7 +70,7 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
     cis_main = findall((sum(nzA[:, [i for i in axes(model.lpmd.A, 2) if !(i in set_vis_main)]]; dims=2)[:, 1]) .== 0)
 
     # Construct the main-model.
-    m_main = model_from_lp(model.lpmd, vis_main, cis_main)
+    m_main = model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main())
     push!(model.models, m_main)
     push!(model.idx_model_vars, vis_main)       
     push!(model.idx_model_cons, cis_main)
@@ -86,7 +86,7 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
             cis_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
             vis_in_component = findall((sum(nzA[cis_in_component, :]; dims=1) .!= 0)[1, :])
             
-            m_sub = model_from_lp(model.lpmd, vis_in_component, cis_in_component)
+            m_sub = model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub())
     
             push!(model.models, m_sub)
             push!(model.idx_model_vars, vis_in_component)       

@@ -33,6 +33,64 @@ struct BD_SubEnsureFeasibilityRegex <: DecompositionAttribute
     regex::Regex
 end
 
+struct BD_SubFeasiblityCutsAlways <: DecompositionAttribute end
+struct BD_SubFeasiblityCutsOnDemand <: DecompositionAttribute
+    init_on::Bool
+    state::Vector{Bool}
+
+    BD_SubFeasiblityCutsOnDemand(init_on::Bool) = new(init_on, [])
+end
+
+function bd_jump_configure_dualrays(model::DecomposedModel, sub_model_index::Int, activate::Bool)
+    @debug "Configure dual ray extraction" sub_model_index activate
+
+    jump_model = bd_sub(model; index=sub_model_index)
+    
+    solver = solver_name(jump_model)
+    if solver == "Gurobi"
+        set_attribute(jump_model, "InfUnbdInfo", activate ? 1 : 0)
+        set_attribute(jump_model, "DualReductions", activate ? 0 : 1)
+    elseif solver == "HiGHS"
+        set_attribute(jump_model, "presolve", activate ? "off" : "on")
+        # set_attribute(jump_model, "solver", activate ? "simplex" : "choose")
+        # TODO: does that also need "sovler=simplex" and "simplex_strategy=dual"?
+        # See:  https://ampl.com/colab/notebooks/ampl-development-tutorial-56-parallelizing-subproblem-solves-in-benders-decomposition.html#utility-and-worker-functions
+    else
+        @error "Controlling dual ray extraction via `JuMP` is currently not supported for solver `$(solver)`"
+        return nothing
+    end
+
+    if bd_has_attribute_type(model, BD_SubFeasiblityCutsOnDemand)
+        attr = bd_get_attribute(model, BD_SubFeasiblityCutsOnDemand)
+        attr.state[sub_model_index] = activate
+    end
+
+    return nothing
+end
+
+function bd_modify(model::DecomposedModel, attribute::BD_SubFeasiblityCutsAlways)
+    # We need to push first, because `bd_jump_configure_dualrays` will look for this attribute.
+    push!(model.attributes, attribute)
+
+    for i in eachindex(bd_subs(model))
+        bd_jump_configure_dualrays(model, i, true)
+    end
+
+    return nothing
+end
+
+function bd_modify(model::DecomposedModel, attribute::BD_SubFeasiblityCutsOnDemand)
+    # We need to push first, because `bd_jump_configure_dualrays` will look for this attribute.
+    push!(model.attributes, attribute)
+
+    for i in eachindex(bd_subs(model))
+        push!(attribute.state, false)
+        bd_jump_configure_dualrays(model, i, attribute.init_on)
+    end
+
+    return nothing
+end
+
 function bd_modify(model::DecomposedModel, attribute::BD_SubObjectivePure)
     vis_main = model.idx_model_vars[1]
     for i in 1:(length(model.models) - 1)

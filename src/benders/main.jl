@@ -62,10 +62,10 @@ function _bd_setup_θ(model::DecomposedModel)
 
     if bd_has_attribute_type(model, BD_MainCutTypeSingle)
         @variable(bd_main(model), θ)
-        set_lower_bound(θ, -1e1)           # TODO
+        set_lower_bound(θ, -1e4)           # TODO
     else
         @variable(bd_main(model), θ[i = 1:(length(model.models) - 1)])
-        set_lower_bound.(θ, -1e1)           # TODO
+        set_lower_bound.(θ, -1e4)           # TODO
     end
 
     return nothing
@@ -115,6 +115,8 @@ function bd_modify(model::DecomposedModel, attribute::BD_MainObjectiveCon)
 end
 
 function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Containers.DenseAxisArray)
+    # TODO: get the current solution directly from the model
+
     if !(bd_has_attribute_type(model, BD_MainCutTypeSingle) || bd_has_attribute_type(model, BD_MainCutTypeMulti))
         @error "No valid cut mode (single / multi) specified"
         return nothing
@@ -137,11 +139,11 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
         m_sub = bd_sub(model; index=i)
         m_sub_x = m_sub[:x]
 
-        cut_type = _bd_check_cut_type(m_sub)
+        cut_type = bd_check_cut_type(m_sub)
 
         if cut_type == :optimality
             exp_cut = bd_has_attribute_type(model, BD_MainCutTypeSingle) ? single_cut_exp : AffExpr(0.0)
-            add_to_expression!(exp_cut, objective_value(bd_sub(model; index=i)))  # TODO: this should be the "lower bound of the sub-model"
+            add_to_expression!(exp_cut, model.info[:results][:subs][i][:obj])  # TODO: this should be the "lower bound of the sub-model"
 
             for vi in vis_main
                 (vi in vis_sub) || continue
@@ -157,6 +159,8 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
                     exp_cut += m_main[:obj]
                 end
         
+                # TODO: it can happen that we add a lot of `\theta >= 0` cuts here, due to the "trivial" sub-models.
+                #       => catch linear dependent cuts and do not add them.
                 cut = @constraint(m_main, m_main[:θ][i] >= exp_cut)
                 push!(model.cuts[:optimality], cut)
                 nof_added_opt_cuts += 1
@@ -172,11 +176,12 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
                 (vi in vis_sub) || continue
 
                 λ = dual(FixRef(m_sub_x[vi]))
-                add_to_expression!(exp_cut, λ, m_main_x[vi])
+                add_to_expression!(exp_cut, λ, fix_value(m_sub_x[vi]))  # TODO: get that from the current solution instead
+                add_to_expression!(exp_cut, -λ, m_main_x[vi])
             end
 
             # Add the new cut to the main-model, and to the list of all cuts.
-            cut = @constraint(m_main, exp_cut <= 0)
+            cut = @constraint(m_main, exp_cut >= model.info[:results][:subs][i][:obj_dual])  
             push!(model.cuts[:feasibility], cut)
             nof_added_feas_cuts += 1
         else
@@ -198,13 +203,13 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
     return nof_added_feas_cuts, nof_added_opt_cuts
 end
 
-function _bd_check_cut_type(model::JuMP.Model)
+function bd_check_cut_type(model::JuMP.Model; verbose::Bool = true)
     if is_solved_and_feasible(model)
         return :optimality
     end
 
     if dual_status(model) != MOI.INFEASIBILITY_CERTIFICATE
-        @error "Turn off presolve, or any setting blocking extraction of dual rays"
+        verbose && (@error "Turn off presolve, or any setting blocking extraction of dual rays")
         return :error
     end
 
