@@ -1,7 +1,7 @@
 abstract type DecompositionAttribute end
 abstract type DecompositionQuery end
 
-@kwdef struct DecomposedModel4
+@kwdef struct DecomposedModel6
     monolithic::JuMP.Model
     lpmd::JuMP.LPMatrixData
 
@@ -21,13 +21,17 @@ abstract type DecompositionQuery end
 
     decomposition_maps = Dict{Any, Any}()
 
-    stats = Dict{Symbol, Any}(
-        :iteration => 0,
-        :lower_bound => -Inf,
-        :upper_bound => Inf,
-        :gap_rel => Inf,
-        :gap_abs => Inf,
-    )     # TODO: transform into a struct, that tracks stats for each iteration (using a "inc_iter" function)
+    info = Dict{Symbol, Any}(
+        :stats => Dict(
+            :created => time_ns(),
+            :started => missing,
+        ),
+        :history => Vector{Dict{Symbol, Any}}(),
+        :results => Dict{Symbol, Any}(
+            :main => Dict{Symbol, Any}(),
+            :subs => Vector{Dict}()
+        )
+    )
 
     attributes::Vector{DecompositionAttribute} = DecompositionAttribute[]
 
@@ -36,7 +40,113 @@ abstract type DecompositionQuery end
         :optimality => ConstraintRef[],
     )  # TODO: track which cut is created by which iteration (inside the stats struct)
 end
-DecomposedModel = DecomposedModel4
+DecomposedModel = DecomposedModel6
+
+_abs_gap(x::Float64, y::Float64) = abs(x - y)
+function _rel_gap(x::Float64, y::Float64)
+    tol = sqrt(eps(Float64))
+    lower = min(x, y)
+    upper = max(x, y)
+    gap = upper - lower
+
+    # This is similar to: https://www.gurobi.com/documentation/current/refman/mipgap2.html
+    # Note: Behaviour for `upper == 0` may not be as expected.
+
+    (isnan(gap) || !isfinite(gap)) && return +Inf
+    isapprox(upper, 0.0; atol=tol) && return isapprox(lower, 0.0; atol=tol) ? 0.0 : +Inf
+    return abs(gap / upper)
+end
+
+current_iteration(model::DecomposedModel) = length(model.info[:history])
+best_upper_bound(model::DecomposedModel) = minimum(it[:upper_bound] for it in model.info[:history]; init=+Inf)
+best_lower_bound(model::DecomposedModel) = maximum(it[:lower_bound] for it in model.info[:history]; init=-Inf)
+best_gap_abs(model::DecomposedModel) = _abs_gap(best_lower_bound(model), best_upper_bound(model))
+best_gap_rel(model::DecomposedModel) = _rel_gap(best_lower_bound(model), best_upper_bound(model))
+
+total_wall_time(model::DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history])
+total_cpu_time(model::DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history])
+
+function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbose::Bool=true, assumed_pcores::Int = 16)
+    nof_feas_cuts, nof_opt_cuts = added_cuts
+    iter = current_iteration(model)
+    curr_time = time_ns()
+
+    # Calculate the lower bound.
+    lb = model.info[:results][:main][:obj_f_val] # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+
+    # Calculate the upper bound.
+    subs_obj = [it[:obj] for it in model.info[:results][:subs]]
+    ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
+    if bd_has_attribute_type(model, BD_MainObjectiveCon)
+        ub += model.info[:results][:main][:obj_exp]
+    else
+        ub += model.info[:results][:main][:obj_f_val] - sum(model.info[:results][:main][:θ])
+    end
+
+    # Find all cuts that were added in this iteration.
+    new_cuts = Dict(
+        :feasibility => model.cuts[:feasibility][(end-nof_feas_cuts+1):end],
+        :optimality => model.cuts[:optimality][(end-nof_opt_cuts+1):end],
+    )
+
+    # Estimate "batched" parallel processing of sub-model timings.
+    _t = est_Δt_wall[:subs]
+    _batches = [
+        _t[((i-1) * assumed_pcores + 1):min(i * assumed_pcores, end)]
+        for i in 1:ceil(Int, length(_t) / assumed_pcores)
+    ]
+    subs_wall_time = sum(maximum.(_batches))
+
+    # Prepare and add the history entry.
+    entry = Dict(
+        :iteration => iter,
+        :time => Dict(
+            :timestamp => curr_time,
+            :wall => est_Δt_wall[:main] + subs_wall_time + est_Δt_wall[:aux],
+            :cpu => curr_time - (iter == 0 ? model.info[:stats][:started] : model.info[:history][end][:time][:timestamp]),
+            :estimate => est_Δt_wall,
+        ),
+        :lower_bound => lb,
+        :upper_bound => ub,
+        :gap_abs => _abs_gap(lb, ub),
+        :gap_rel => _rel_gap(lb, ub),
+        :added_cuts => new_cuts,
+    )
+    push!(model.info[:history], entry)
+
+    # Printing.
+    if verbose
+        if iter == 0
+            # Print motd-like header.
+            println("╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮")
+            println("│ >> Decomposition.jl <<                                              [version::0.1.0  //  algorithm::benders] │")
+            println("├────────┬───────────────────────────┬───────────────────────────┬───────────────────────────┬─────────────────┤")
+            println("│        │      objective bound      │      current best gap     │    est. execution time    │   added cuts    │")
+            println("├────────┼─────────────┬─────────────┼───────────────────────────┤─────────────┬─────────────┤────────┬────────┤")
+            println("│   iter │       lower │       upper │    absolute │    relative │    wall [s] │     cpu [s] │  feas. │   opt. │")
+            println("├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤")
+        end
+
+        _print_iteration(
+            iter,
+            best_lower_bound(model),
+            best_upper_bound(model),
+            best_gap_abs(model),
+            best_gap_rel(model),
+            Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
+            Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
+            length(model.cuts[:feasibility]),
+            length(model.cuts[:optimality]),
+        )
+    end
+
+    return nothing
+end
+
+function check_termination(model::DecomposedModel)
+    # TODO: implement
+    return false
+end
 
 function modify(::DecomposedModel, ::DecompositionAttribute)
     @error "Not implemented"
@@ -51,6 +161,7 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
 
     model = direct_model(Gurobi.Optimizer(GRB_ENV))
     # model = direct_model(HiGHS.Optimizer())
+    set_silent(model)
 
     # Create variables, and set bounds.
     @variable(model, x[i = idx_v])
