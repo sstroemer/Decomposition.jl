@@ -195,7 +195,7 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
         nof_added_opt_cuts += 1
     end
 
-    return nof_added_opt_cuts, nof_added_feas_cuts
+    return nof_added_feas_cuts, nof_added_opt_cuts
 end
 
 function _bd_check_cut_type(model::JuMP.Model)
