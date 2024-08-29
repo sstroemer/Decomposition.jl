@@ -465,13 +465,18 @@ include("external_frameworks/general.jl")
 
 const GRB_ENV = Gurobi.Env()
 
-# using Logging
-# global_logger(ConsoleLogger(stderr, Logging.Debug))
+using Logging
+SWITCH_TO_DEBUG = true
+if SWITCH_TO_DEBUG
+    global_logger(ConsoleLogger(stderr, Logging.Debug))
+else
+    global_logger(ConsoleLogger(stderr, Logging.Info))
+end
 
 # --------------------------------------------------------------------
 
-T = 8760
-nof_temporal_splits = Dict(120 => 3, 2184 => 52, 4368 => 48, 8760 => 120)[T]
+T = 120
+nof_temporal_splits = Dict(120 => 4, 2184 => 12, 4368 => 48, 8760 => 120)[T]
 
 orig_model = read_from_file("national_scale_$T.mps"; format = JuMP.MOI.FileFormats.FORMAT_MPS)
 lpmd = lp_matrix_data(orig_model)
@@ -482,8 +487,8 @@ model = DecomposedModel(;
     lpmd,
     T,
     nof_temporal_splits,
-    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV),   # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
-    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),    # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
+    f_opt_main = () -> HiGHS.Optimizer(),   # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
+    f_opt_sub = () -> HiGHS.Optimizer(),    # Gurobi.Optimizer(GRB_ENV) or HiGHS.Optimizer()
 );
 
 # set_optimizer(orig_model, Gurobi.Optimizer)
@@ -518,7 +523,7 @@ modify(model, SOLVE_AlgorithmIPM(:main))
 bd_modify(model, BD_SubFeasiblityCutsOnDemand(false))
 
 for sm in bd_subs(model)
-    # set_attribute(sm, "Method", 1)
+    set_attribute(sm, "solver", "simplex")
     # set_attribute(sm, "LPWarmStart", 0)
     # set_attribute(sm, "PreDual", 1)
 end
@@ -535,7 +540,7 @@ bd_modify(model, BD_SubObjectivePure())
 bd_modify(model, MainVirtualBounds(0.0, 1e6))
 
 # bd_modify(model, BD_SubEnsureFeasibilityLinked(-1, 1e6))
-# bd_modify(model, BD_SubEnsureFeasibilityRegex(-1, 1e4, r".*(variables\(storage\)).*"))
+bd_modify(model, BD_SubEnsureFeasibilityRegex(-1, 1e4, r".*(variables\(storage\)).*"))
 
 # NOTE:
 # one problem with feasibility cuts seems to be selecting proper "temporal values", e.g., for storages
@@ -550,8 +555,9 @@ bd_modify(model, MainVirtualBounds(0.0, 1e6))
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
 
+turn_on_again = Set{Int}()
 model.info[:stats][:started] = time_ns()
-for i in 1:150
+for k in 1:500
     est_Δt_wall = OrderedDict(:main => 0.0, :subs => [], :aux => 0.0)
 
     est_Δt_wall[:main] += (@timed begin
@@ -579,8 +585,18 @@ for i in 1:150
     #     delete_lower_bound(bd_main(model)[:θ])
     # end
 
-    # Solve the sub-models.
     model.info[:results][:subs] = []
+
+    # Turn off dual ray extraction for sub-models that we expect to be feasible.
+    while !isempty(turn_on_again)
+        i = pop!(turn_on_again)
+        bd_jump_configure_dualrays(model, i, false)
+
+        # TODO:
+        # MOI.Utilities.reset_optimizer(bd_sub(model; index=i))   # only works for non-direct mode
+    end
+
+    # Solve the sub-models.
     for i in 1:(length(model.models) - 1)
         m_sub = bd_sub(model; index=i)
 
@@ -606,8 +622,9 @@ for i in 1:150
                     elseif cut_type == :optimality && sfcod.state[i]
                         # The sub-model allows optimality cuts, let's see if we shall turn of dual rays.
                         # TODO: check if the model has been feasible for N iterations (config. N in BD_SubFeasiblityCutsOnDemand)
-                        bd_jump_configure_dualrays(model, i, false)
-                        # set_attribute(m_sub, "LPWarmStart", 2)
+                        
+                        # Delayed turning off of dual rays, since we may need to extract some results from the model before.
+                        push!(turn_on_again, i)  # triggers `bd_jump_configure_dualrays(model, i, false)` later
                     else
                         # Out of luck. Not doing anything here, since the cut extraction will properly fail later on.
                     end
@@ -656,7 +673,8 @@ compare(
         xaxis_title="Iteration",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="01_rel_gap_iter"
 )
 
 # --------------------------------------------------------------------
@@ -677,7 +695,8 @@ compare(
         xaxis_title="Time [s]",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="02_rel_gap_time"
 )
 
 # --------------------------------------------------------------------
@@ -693,20 +712,46 @@ compare(
         )
     ],
     Layout(
-        title="Calliope - National Scale (0.5Y) - Relative gap",
+        title="Calliope - National Scale (0.5Y) - Lower bound",
         yaxis_type="log",
         xaxis_title="Time [s]",
-        yaxis_title="Relative gap",
+        yaxis_title="Lower bound",
         xaxis_range=[0, 20],
         yaxis_range=log10.([2e5, 13e6]),
     );
     additional_traces=[
-        scatter(x = [0, 60], y = repeat([1.1148105940e+07], 2), mode="lines", name="true", line=attr(color="black", width=3, dash="dot")),
-        scatter(x = [3.08, 3.08], y = [0, 15e6], mode="lines", name="true", line=attr(color="black", width=3, dash="dot")),
-    ]
+        scatter(x = [0, 60], y = repeat([1.1148105940e+07], 2), mode="lines", name="true solution", line=attr(color="black", width=3, dash="dot")),
+        scatter(x = [3.08, 3.08], y = [0, 15e6], mode="lines", name="from gurobi", line=attr(color="black", width=3, dash="dot")),
+    ],
+    html="03_lb_time"
 )
 
-# 5b54bec => 8760 default
+# --------------------------------------------------------------------
+# (T:8760) LOWER BOUND over TIME
+# --------------------------------------------------------------------
+compare(
+    ["5b54bec"],
+    [
+        (mi) -> trace_bounds(mi)[1],
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name="$(mi["inputs"]["splits"]) splits",
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (1Y) - Lower bound",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Lower bound",
+        xaxis_range=[0, 25],
+        yaxis_range=log10.([1e5, 25e6]),
+    );
+    additional_traces=[
+        scatter(x = [0, 60], y = repeat([2.238932354e+07], 2), mode="lines", name="true solution", line=attr(color="black", width=3, dash="dot")),
+        scatter(x = [18.43, 18.43], y = [0, 25e6], mode="lines", name="from gurobi", line=attr(color="black", width=3, dash="dot")),
+    ],
+    html="04_lb_time_full_year"
+)
 
 # --------------------------------------------------------------------
 # (select:split:48) REL GAP over ITERATION
@@ -727,7 +772,8 @@ compare(
         xaxis_title="Iteration",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="05_rel_gap_iter_feasibility"
 )
 
 # --------------------------------------------------------------------
@@ -749,7 +795,8 @@ compare(
         xaxis_title="Time [s]",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="06_rel_gap_time_feasibility"
 )
 
 # --------------------------------------------------------------------
@@ -771,7 +818,8 @@ compare(
         xaxis_title="Iteration",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="07_rel_gap_iter_solveroptions"
 )
 
 # --------------------------------------------------------------------
@@ -793,8 +841,45 @@ compare(
         xaxis_title="Time [s]",
         yaxis_title="Relative gap",
         yaxis_range=log10.([1e-12, 5.0]),
-    )
+    );
+    html="08_rel_gap_iter_solveroptions"
 )
+
+# --------------------------------------------------------------------
+# (T:2184:inner:highs) REL GAP over TIME
+# --------------------------------------------------------------------
+_legend_names = ["gurobi + gurobi", "gurobi + highs"]
+compare(
+    ["20624ac", "7a47a37"],
+    [
+        trace_rel_gap,
+        (mi) -> (
+            x=cumsum(it["time"]["wall"] for it in mi["history"]) ./ 1e9,
+            name=popfirst!(_legend_names),
+        )
+    ],
+    Layout(
+        title="Calliope - National Scale (0.25Y) - Relative gap",
+        yaxis_type="log",
+        xaxis_title="Time [s]",
+        yaxis_title="Relative gap",
+        yaxis_range=log10.([1e-12, 5.0]),
+    );
+    html="09_rel_gap_iter_solvers"
+)
+
+
+
+different algorithms, different settings, tested with different solvers
+=> so: what works with OS solvers, what do they need, etc.
+
+handbook / guide / clustered overview
+step by step overview of techniques, parameters, algorithms, etc.
+
+"toy" examples for each "introduced change"
+
+
+document the process
 
 
 

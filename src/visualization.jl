@@ -1,6 +1,6 @@
 using PlotlyJS
 
-function compare(hashes::Vector{String}, f_trace::Union{Function, Vector{Function}}, pltargs...; additional_traces = nothing, pltkwargs...)
+function compare(hashes::Vector{String}, f_trace::Union{Function, Vector{Function}}, pltargs...; html::String, additional_traces = nothing, pltkwargs...)
     if f_trace isa Function
         f_trace = [f_trace]
     end
@@ -26,13 +26,17 @@ function compare(hashes::Vector{String}, f_trace::Union{Function, Vector{Functio
     
     traces = AbstractTrace[]
     !isnothing(additional_traces) && append!(traces, additional_traces)
-    
+
     for filename in files
         model_info = JSON3.read(filename, Dict; allow_inf=true)
         push!(traces, scatter(; merge([f(model_info) for f in f_trace]...)...))
     end
 
-    return plot(traces, pltargs...; pltkwargs...)
+    p = plot(traces, pltargs...; pltkwargs...)
+    open("out/figures/$(html).html", "w") do io
+        PlotlyBase.to_html(io, p.plot)
+    end
+    return plot
 end
 
 function trace_rel_gap(model_info::Dict)

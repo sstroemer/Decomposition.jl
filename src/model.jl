@@ -231,6 +231,7 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
     # TODO: transform single variable constraints into bounds
 
     model = direct_model(optimizer)
+    # model = Model(() -> optimizer)
     set_silent(model)
 
     # Create variables, and set bounds.
