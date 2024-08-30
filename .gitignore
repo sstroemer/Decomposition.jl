@@ -46,3 +46,6 @@ python/
 *.MPS
 *.LP.*
 *.MPS.*
+
+# Output files.
+out/
