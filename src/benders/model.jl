@@ -1,15 +1,4 @@
-abstract type DecompositionAttribute end
-abstract type DecompositionQuery end
-
-function Base.show(io::IO, attribute::DecompositionAttribute)
-    str = "$(typeof(attribute))("
-    str *= join(["$(prop)=$(getfield(attribute, prop))" for prop in propertynames(attribute)], ",")
-    str *= ")"
-    print(io, str)
-    return nothing
-end
-
-@kwdef struct DecomposedModel9
+@kwdef struct DecomposedModel1 <: AbstractDecomposedModel
     name::String
 
     monolithic::JuMP.Model
@@ -19,18 +8,25 @@ end
     nof_temporal_splits::Int64
 
     # TODO: Store these as (sorted) vector (is that even needed?) and as set (for faster lookup)
-    idx_model_vars::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
-    idx_model_cons::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
+    vis::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
+    cis::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
 
-
-    # TODO: allow storing "all_variables" somewhere for each model (and for main: before adding θ!)
+    # TODO: Allow storing "all_variables" somewhere for each model (and for main: before adding θ!)
     models::Vector{JuMP.Model} = Vector{JuMP.Model}[]
-    reference_maps = Vector{Any}()
 
     annotations = Dict{Any, Any}(:variables => Dict{Any, Any}(), :constraints => Dict{Any, Any}())
 
-    decomposition_maps = Dict{Any, Any}()
+    attributes::Vector{AbstractDecompositionAttribute} = AbstractDecompositionAttribute[]
+    _attribute_iteration_info::Vector{Int64} = Int64[]
 
+    solutions = Dict{Symbol, Any}(
+        :current => Dict{Symbol, Any}(
+            :main => nothing
+            :subs => nothing
+        ),
+    )
+
+    # TODO: Move that into a struct
     info = OrderedDict{Symbol, Any}(
         :stats => OrderedDict(
             :created => time_ns(),
@@ -38,24 +34,23 @@ end
         ),
         :history => Vector{Dict{Symbol, Any}}(),
         :results => OrderedDict{Symbol, Any}(
+            # TODO: merge this (that only holds "objective values") into `solutions`
             :main => OrderedDict{Symbol, Any}(),
             :subs => Vector{Dict}()
         )
     )
 
-    attributes::Vector{DecompositionAttribute} = DecompositionAttribute[]
-
-    cuts = OrderedDict{Symbol, Vector{ConstraintRef}}(
-        :feasibility => ConstraintRef[],
-        :optimality => ConstraintRef[],
-    )  # TODO: track which cut is created by which iteration (inside the stats struct)
+    cuts = OrderedDict{Symbol, Vector{JuMP.ConstraintRef}}(
+        :feasibility => JuMP.ConstraintRef[],
+        :optimality => JuMP.ConstraintRef[],
+    )
 
     f_opt_main = () -> Gurobi.Optimizer(GRB_ENV)
     f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV)
 
     log::Vector{String} = String[]
 end
-DecomposedModel = DecomposedModel9
+DecomposedModel = DecomposedModel1
 
 abs_gap(x::Float64, y::Float64) = abs(x - y)
 function rel_gap(x::Float64, y::Float64)
@@ -92,11 +87,8 @@ function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbo
     # Calculate the upper bound.
     subs_obj = [it[:obj] for it in model.info[:results][:subs]]
     ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
-    if bd_has_attribute_type(model, BD_MainObjectiveCon)
-        ub += model.info[:results][:main][:obj_exp]
-    else
-        ub += model.info[:results][:main][:obj_f_val] - sum(model.info[:results][:main][:θ])
-    end
+    ub += model.info[:results][:main][:obj_f_val] - sum(model.info[:results][:main][:θ])
+    # TODO: Account here for stuff like "ObjectiveInCuts"
 
     # Find all cuts that were added in this iteration.
     new_cuts = OrderedDict(
@@ -193,8 +185,8 @@ function save(model::DecomposedModel)
             ),
             "attributes" => showtostr.(model.attributes),
             "models" => OrderedDict(
-                "main" => showtostr(bd_main(model)),
-                "subs" => showtostr.(bd_subs(model)),
+                "main" => showtostr(main(model)),
+                "subs" => showtostr.(subs(model)),
             ),
             "cuts" => OrderedDict(
                 "feasibility" => length(model.cuts[:feasibility]),
@@ -219,26 +211,18 @@ function save(model::DecomposedModel)
     return nothing
 end
 
-function modify(::DecomposedModel, ::DecompositionAttribute)
-    @error "Not implemented"
-end
-
-attach_solver(model::JuMP.Model, solver) = set_optimizer(model, solver)  # TODO: use this to attach "BD" (or others)
-solve!(model::JuMP.Model) = optimize!(model)
-
 function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer)
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
-    # TODO: transform single variable constraints into bounds
 
-    model = direct_model(optimizer)
+    model = JuMP.direct_model(optimizer)
     # model = Model(() -> optimizer)
-    set_silent(model)
+    JuMP.set_silent(model)
 
     # Create variables, and set bounds.
-    @variable(model, x[i = idx_v])
+    JuMP.@variable(model, x[i = idx_v])
     for i in idx_v
-        isfinite(lpmd.x_lower[i]) && set_lower_bound(x[i], lpmd.x_lower[i])
-        isfinite(lpmd.x_upper[i]) && set_upper_bound(x[i], lpmd.x_upper[i])
+        isfinite(lpmd.x_lower[i]) && JuMP.set_lower_bound(x[i], lpmd.x_lower[i])
+        isfinite(lpmd.x_upper[i]) && JuMP.set_upper_bound(x[i], lpmd.x_upper[i])
     end
 
     single_var_con = Set{Int64}()
@@ -264,15 +248,15 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
             
             if isfinite(lpmd.b_lower[i])
                 new_lb = lpmd.b_lower[i] / c
-                if !has_lower_bound(x[_idx]) || new_lb > lower_bound(x[_idx])
-                    set_lower_bound(x[_idx], new_lb)
+                if !JuMP.has_lower_bound(x[_idx]) || new_lb > JuMP.lower_bound(x[_idx])
+                    JuMP.set_lower_bound(x[_idx], new_lb)
                 end
             end
 
             if isfinite(lpmd.b_upper[i])
                 new_ub = lpmd.b_upper[i] / c
-                if !has_upper_bound(x[_idx]) || new_ub < upper_bound(x[_idx])
-                    set_upper_bound(x[_idx], new_ub)
+                if !JuMP.has_upper_bound(x[_idx]) || new_ub < JuMP.upper_bound(x[_idx])
+                    JuMP.set_upper_bound(x[_idx], new_ub)
                 end
             end
 
@@ -289,91 +273,9 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
         isfinite(lpmd.b_upper[i]) && push!(add_lt, i)
     end
 
-    @constraint(model, lpmd.A[add_eq, idx_v] * x.data .== lpmd.b_lower[add_eq])
-    @constraint(model, lpmd.A[add_ge, idx_v] * x.data .>= lpmd.b_lower[add_ge])
-    @constraint(model, lpmd.A[add_lt, idx_v] * x.data .<= lpmd.b_upper[add_lt])
+    JuMP.@constraint(model, lpmd.A[add_eq, idx_v] * x.data .== lpmd.b_lower[add_eq])
+    JuMP.@constraint(model, lpmd.A[add_ge, idx_v] * x.data .>= lpmd.b_lower[add_ge])
+    JuMP.@constraint(model, lpmd.A[add_lt, idx_v] * x.data .<= lpmd.b_upper[add_lt])
 
     return model
-end
-
-struct SOLVE_AlgorithmSimplex <: DecompositionAttribute
-    model::Symbol   # :main, :sub
-    type::Symbol    # :primal, :dual, ...
-end
-
-struct SOLVE_AlgorithmIPM <: DecompositionAttribute
-    model::Symbol   # :main, :sub
-    crossover::Bool
-
-    SOLVE_AlgorithmIPM(model::Symbol) = new(model, false)
-end
-
-function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmSimplex)
-    models = attribute.model == :main ? [bd_main(model)] : bd_subs(model)
-    for m in models
-        solver = solver_name(m)
-        if solver == "Gurobi"
-            val = -1
-            if attribute.type == :primal
-                val = 0
-            elseif attribute.type == :dual
-                val = 1
-            else
-                @error "Simplex type `$(attribute.type)` not supported by solver `$(solver)`"
-            end
-
-            set_attribute(m, "Method", val)
-        else
-            @error "Setting `SOLVE_AlgorithmSimplex` is currently not supported for solver `$(solver)`"
-        end
-    end
-
-    push!(model.attributes, attribute)
-    return nothing
-end
-
-function modify(model::DecomposedModel, attribute::SOLVE_AlgorithmIPM)
-    models = attribute.model == :main ? [bd_main(model)] : bd_subs(model)
-    for m in models
-        solver = solver_name(m)
-        if solver == "Gurobi"
-            set_attribute(m, "Method", 2)
-            set_attribute(m, "Crossover", attribute.crossover ? -1 : 0)
-        elseif solver == "HiGHS"
-            set_attribute(m, "solver", "ipm")
-            set_attribute(m, "run_crossover", attribute.crossover ? "on" : "off")
-        else
-            @error "Setting `SOLVE_AlgorithmSimplex` is currently not supported for solver `$(solver)`"
-        end
-    end
-
-    push!(model.attributes, attribute)
-    return nothing
-end
-
-"""
-Helper function to get the graph structure.
-"""
-function create_adjacency_matrix(A::SparseArrays.SparseMatrixCSC, rm::Set{Int64})
-    tA = SparseArrays.SparseMatrixCSC((A .!= 0)')
-    rvs = SparseArrays.rowvals(tA)
-    
-    I = Int64[]
-    J = Int64[]
-
-    for i in 1:size(A, 1)
-        nodes = rvs[SparseArrays.nzrange(tA, i)] # tA[:, i].nzind
-        for j in eachindex(nodes)
-            u = nodes[j]
-            (u in rm) && continue
-            for k in (j+1):length(nodes)
-                v = nodes[k]
-                (v in rm) && continue
-                push!(I, u)
-                push!(J, v)
-            end
-        end
-    end
-
-    return LinearAlgebra.Symmetric(SparseArrays.sparse(I, J, 1, size(A, 2), size(A, 2)))
 end

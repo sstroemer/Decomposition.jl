@@ -1,8 +1,8 @@
-struct Calliope <: ExternalFramework
+struct Calliope <: ExternalESM
     # TODO: these could keep version, specific necessary information, etc.
 end
 
-function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
+function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     # TODO: make sure / check / warn on MILP models, since this, e.g., matches "available_flow_cap", which is not a design variable
     _split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
 
@@ -12,7 +12,7 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
     REGEX_DESIGN = r".*(cap|a_use).*"
 
     # Get all variable names, and find the ones that match the design variables.
-    var_names = name.(model.lpmd.variables)
+    var_names = JuMP.name.(model.lpmd.variables)
     vis_design = [i for i in axes(model.lpmd.A, 2) if !isnothing(match(REGEX_DESIGN, var_names[i]))]
 
     # Names of all constraints that link temporal "blocks".
@@ -24,7 +24,7 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
     ]
 
     # Get all constraint names.
-    con_names = name.(model.lpmd.affine_constraints)
+    con_names = JuMP.name.(model.lpmd.affine_constraints)
 
     # Prepare positive / negative entries of A.
     nzA = model.lpmd.A .!= 0
@@ -70,15 +70,15 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
     cis_main = findall((sum(nzA[:, [i for i in axes(model.lpmd.A, 2) if !(i in set_vis_main)]]; dims=2)[:, 1]) .== 0)
 
     # Construct the main-model.
-    m_main = model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main())
+    m_main = Benders.model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main())
     push!(model.models, m_main)
     push!(model.idx_model_vars, vis_main)       
     push!(model.idx_model_cons, cis_main)
 
     # Create a graph from the problem.
     adj_matrix = create_adjacency_matrix(model.lpmd.A, set_vis_main)
-    g = SimpleGraph(adj_matrix)
-    cc = connected_components(g)
+    g = Graphs.SimpleGraph(adj_matrix)
+    cc = Graphs.connected_components(g)
 
     # Create sub-model for each connected component.
     for component in cc
@@ -86,7 +86,7 @@ function generate_annotation(model::DecomposedModel, ext_fw::Calliope)
             cis_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
             vis_in_component = findall((sum(nzA[cis_in_component, :]; dims=1) .!= 0)[1, :])
             
-            m_sub = model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub())
+            m_sub = Benders.model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub())
     
             push!(model.models, m_sub)
             push!(model.idx_model_vars, vis_in_component)       
