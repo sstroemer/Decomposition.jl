@@ -2,12 +2,40 @@ struct BD_MainObjectiveConstOnly <: DecompositionAttribute end
 struct BD_MainObjectiveObj <: DecompositionAttribute end
 struct BD_MainObjectiveCon <: DecompositionAttribute end
 
-struct BD_MainCutTypeSingle <: DecompositionAttribute end
-struct BD_MainCutTypeMulti <: DecompositionAttribute end
+abstract type BD_AbstractMainCutType <: DecompositionAttribute end
+struct BD_MainCutTypeSingle <: BD_AbstractMainCutType end
+struct BD_MainCutTypeMulti <: BD_AbstractMainCutType end
+
+struct BD_MainCutType <: BD_AbstractMainCutType
+    # options: :off, :single, :multi, :aggregated, :adaptive (changes cuts)
+
+    feasibility::Symbol
+    optimality::Symbol
+end
 
 struct MainVirtualBounds <: DecompositionAttribute
     lower::Float64
     upper::Float64
+end
+
+# TODO: refactor `push!(model.attributes, attribute)` into
+# function add_attribute!(model, attribute)
+#     push!(model.attributes, attribute) # <=== remember here at WHICH ITERATION it was added
+#     return nothing
+# end
+
+function bd_modify(model::DecomposedModel, attribute::BD_MainCutType)
+    setup_θ = !bd_has_attribute_type(model, BD_MainCutType)
+
+    push!(model.attributes, attribute)
+
+    if setup_θ
+        # First time configuring the cut type => setup the θ variable.
+        @variable(bd_main(model), θ[i = 1:(length(model.models) - 1)])
+        set_lower_bound.(θ, -1e4)           # TODO
+    end
+
+    return nothing
 end
 
 function bd_modify(model::DecomposedModel, attribute::BD_MainCutTypeSingle)
@@ -134,6 +162,11 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
     single_cut_exp = AffExpr(0.0)
     single_opt_cut_empty = true
 
+    new_cuts = Dict{Symbol, Vector{Any}}(
+        :feasibility => [],
+        :optimality => []
+    )
+
     for i in 1:(length(model.models) - 1)
         vis_sub = model.idx_model_vars[1 + i]
         m_sub = bd_sub(model; index=i)
@@ -142,8 +175,13 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
         cut_type = bd_check_cut_type(m_sub)
 
         if cut_type == :optimality
-            exp_cut = bd_has_attribute_type(model, BD_MainCutTypeSingle) ? single_cut_exp : AffExpr(0.0)
+            exp_cut = AffExpr(0.0)
             add_to_expression!(exp_cut, model.info[:results][:subs][i][:obj])  # TODO: this should be the "lower bound of the sub-model"
+
+            # TODO: check if this works as expected
+            if bd_has_attribute_type(model, BD_MainObjectiveCon)
+                add_to_expression!(exp_cut, m_main[:obj])
+            end
 
             for vi in vis_main
                 (vi in vis_sub) || continue
@@ -152,53 +190,118 @@ function bd_generate_cuts(model::DecomposedModel, current_solution::JuMP.Contain
                 add_to_expression!(exp_cut, λ, m_main_x[vi])
                 add_to_expression!(exp_cut, λ, -current_solution[vi])
             end
-    
-            # Only add the cut here, if it is a multi-cut.
-            if bd_has_attribute_type(model, BD_MainCutTypeMulti)
-                if bd_has_attribute_type(model, BD_MainObjectiveCon)
-                    exp_cut += m_main[:obj]
-                end
-        
-                # TODO: it can happen that we add a lot of `\theta >= 0` cuts here, due to the "trivial" sub-models.
-                #       => catch linear dependent cuts and do not add them.
-                cut = @constraint(m_main, m_main[:θ][i] >= exp_cut)
-                push!(model.cuts[:optimality], cut)
-                nof_added_opt_cuts += 1
-            else
-                single_opt_cut_empty = false
-            end
-        elseif cut_type == :feasibility
-            # TODO: is there a multi- vs. single-cut version of feasibility cuts?
 
+            push!(new_cuts[:optimality], (i, exp_cut))
+        elseif cut_type == :feasibility
             # Prepare the cut expression.
-            exp_cut = AffExpr(0.0)
+            exp_cut = AffExpr(model.info[:results][:subs][i][:obj_dual])  # TODO: what's the best way to access this?
             for vi in vis_main
                 (vi in vis_sub) || continue
 
                 λ = dual(FixRef(m_sub_x[vi]))
-                add_to_expression!(exp_cut, λ, fix_value(m_sub_x[vi]))  # TODO: get that from the current solution instead
-                add_to_expression!(exp_cut, -λ, m_main_x[vi])
+                add_to_expression!(exp_cut, λ, m_main_x[vi])
+                add_to_expression!(exp_cut, λ, -current_solution[vi])  # = -fix_value(m_sub_x[vi])
             end
 
-            # Add the new cut to the main-model, and to the list of all cuts.
-            cut = @constraint(m_main, exp_cut >= model.info[:results][:subs][i][:obj_dual])  
-            push!(model.cuts[:feasibility], cut)
-            nof_added_feas_cuts += 1
+            push!(new_cuts[:feasibility], (i, exp_cut))
         else
             @error "Cut type for sub-model $(i) could not be determined"
         end
     end
 
-    if !single_opt_cut_empty
-        # Some sub-models added to the single optimality cut, so we need to add it to the main-model.
-        if bd_has_attribute_type(model, BD_MainObjectiveCon)
-            single_cut_exp += m_main[:obj]
+    return new_cuts
+end
+
+function bd_add_cuts(model::DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}})
+    return _bd_add_cuts(model, new_cuts, bd_get_attribute(model, BD_AbstractMainCutType))
+end
+
+function _bd_add_cuts(model::DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, attribute::BD_MainCutTypeSingle)
+    nof_added_feas_cuts = 0
+    nof_added_opt_cuts = 0
+
+    # TODO: what happens if we aggregate the feasibility cuts too?
+    # if !isempty(new_cuts[:feasibility])
+    #     exp_agg_cut = AffExpr(0.0)
+    #     for (_, exp_cut) in new_cuts[:feasibility]
+    #         add_to_expression!(exp_agg_cut, exp_cut)
+    #     end
+
+    #     push!(
+    #         model.cuts[:feasibility],
+    #         @constraint(bd_main(model), exp_agg_cut <= 0)
+    #     )
+    #     nof_added_feas_cuts += 1
+    # end
+
+    for (_, exp_cut) in new_cuts[:feasibility]
+        push!(
+            model.cuts[:feasibility],
+            @constraint(bd_main(model), exp_cut <= 0)
+        )
+        nof_added_feas_cuts += 1
+    end
+
+    # TODO: aggregating cuts is basically "averaging" them; we could: (1) weight the average, (2) cluster them before aggregating to generate `N >= 1` cuts
+    if !isempty(new_cuts[:optimality])
+        exp_agg_cut = AffExpr(0.0)
+        for (_, exp_cut) in new_cuts[:optimality]
+            add_to_expression!(exp_agg_cut, exp_cut)
         end
 
-        cut = @constraint(m_main, m_main[:θ] >= single_cut_exp)
-        push!(model.cuts[:optimality], cut)
+        n = length(new_cuts[:optimality])
+        push!(
+            model.cuts[:optimality],
+            @constraint(bd_main(model), bd_main(model)[:θ] >= exp_agg_cut)
+        )
         nof_added_opt_cuts += 1
     end
+
+    return nof_added_feas_cuts, nof_added_opt_cuts
+end
+
+function _bd_add_cuts(model::DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, attribute::BD_MainCutTypeMulti)
+    nof_added_feas_cuts = 0
+    nof_added_opt_cuts = 0
+
+    for (_, exp_cut) in new_cuts[:feasibility]
+        push!(
+            model.cuts[:feasibility],
+            @constraint(bd_main(model), exp_cut <= 0)
+        )
+        nof_added_feas_cuts += 1
+    end
+
+    for (i, exp_cut) in new_cuts[:optimality]
+        push!(
+            model.cuts[:optimality],
+            @constraint(bd_main(model), bd_main(model)[:θ][i] >= exp_cut)
+        )
+        nof_added_opt_cuts += 1
+    end
+
+    # TODO: is there a multi- vs. single-cut version of feasibility cuts?
+
+    # bd_has_attribute_type(model, BD_MainCutTypeSingle)
+    # bd_has_attribute_type(model, BD_MainCutTypeMulti)
+    # cut = @constraint(m_main, m_main[:θ][i] >= exp_cut)
+    # push!(model.cuts[:optimality], cut)
+
+    # cut = @constraint(m_main, exp_cut < = 0)  
+
+    # TODO: it can happen that we add a lot of `\theta >= 0` cuts here, due to the "trivial" sub-models.
+    #       => catch linear dependent cuts and do not add them.
+
+    # if !single_opt_cut_empty
+    #     # Some sub-models added to the single optimality cut, so we need to add it to the main-model.
+    #     if bd_has_attribute_type(model, BD_MainObjectiveCon)
+    #         single_cut_exp += m_main[:obj]
+    #     end
+
+    #     cut = @constraint(m_main, m_main[:θ] >= single_cut_exp)
+    #     push!(model.cuts[:optimality], cut)
+    #     nof_added_opt_cuts += 1
+    # end
 
     return nof_added_feas_cuts, nof_added_opt_cuts
 end
