@@ -1,4 +1,4 @@
-struct Calliope <: ExternalESM
+@kwdef struct Calliope <: AbstractExternalESM
     # TODO: these could keep version, specific necessary information, etc.
 end
 
@@ -72,8 +72,8 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     # Construct the main-model.
     m_main = Benders.model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main())
     push!(model.models, m_main)
-    push!(model.idx_model_vars, vis_main)       
-    push!(model.idx_model_cons, cis_main)
+    push!(model.vis, vis_main)       
+    push!(model.cis, cis_main)
 
     # Create a graph from the problem.
     adj_matrix = create_adjacency_matrix(model.lpmd.A, set_vis_main)
@@ -89,8 +89,8 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
             m_sub = Benders.model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub())
     
             push!(model.models, m_sub)
-            push!(model.idx_model_vars, vis_in_component)       
-            push!(model.idx_model_cons, cis_in_component)
+            push!(model.vis, vis_in_component)       
+            push!(model.cis, cis_in_component)
         end
     end
 

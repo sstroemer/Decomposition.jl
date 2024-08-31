@@ -1,9 +1,4 @@
-@kwdef struct VirtualSoftBounds <: AbstractDecompositionAttribute
-    lower::Float64 = -Inf
-    upper::Float64 = +Inf
-end
-
-function modify(model::DecomposedModel, attribute::VirtualSoftBounds)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Main.VirtualSoftBounds)
     for vi in model.vis[1]
         if isfinite(attribute.lower) && !JuMP.has_lower_bound(main(model)[:x][vi])
             JuMP.set_lower_bound(main(model)[:x][vi], attribute.lower)
@@ -14,6 +9,6 @@ function modify(model::DecomposedModel, attribute::VirtualSoftBounds)
         end
     end
 
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end

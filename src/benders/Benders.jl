@@ -1,18 +1,42 @@
 module Benders
 
 import JuMP
-import Printf
+import OrderedCollections: OrderedDict
 
-import ..Decomposition: AbstractDecompositionAttribute, AbstractDecompositionQuery, AbstractDecomposedModel
-import ..Solver: AbstractSolverAttribute
+import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel
 
 include("model.jl")
 
-function has_attribute_type(model::DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
+include("main/Main.jl")
+include("sub/Sub.jl")
+
+import .Main
+import .Sub
+
+function check_cut_type(jump_model::JuMP.Model; verbose::Bool = true)
+    if JuMP.is_solved_and_feasible(jump_model)
+        return :optimality
+    end
+
+    if JuMP.dual_status(jump_model) != JuMP.MOI.INFEASIBILITY_CERTIFICATE
+        verbose && (@error "Turn off presolve, or any setting blocking extraction of dual rays")
+        return :error
+    end
+
+    return :feasibility
+end
+
+end
+
+import .Benders
+
+include("general.jl")
+
+function has_attribute_type(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
     return any(attr isa type for attr in model.attributes)
 end
 
-function get_attributes(model::DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
+function get_attributes(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
     attributes = AbstractDecompositionAttribute[]
     for attr in model.attributes
         attr isa type && push!(attributes, attr)
@@ -25,7 +49,7 @@ function get_attributes(model::DecomposedModel, type::Type{T}) where T <: Abstra
     return attributes
 end
 
-function get_attribute(model::DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
+function get_attribute(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
     attributes = get_attributes(model, type)
 
     if length(attributes) > 1
@@ -36,23 +60,20 @@ function get_attribute(model::DecomposedModel, type::Type{T}) where T <: Abstrac
     return attributes[1]
 end
 
-main(model::DecomposedModel) = model.models[1]
-sub(model::DecomposedModel; index::Int) = model.models[1 + index]
-subs(model::DecomposedModel) = model.models[2:end]
-
-include("main/Main.jl")
-include("sub/Sub.jl")
-
-function modify(model::DecomposedModel, attribute::AbstractSolverAttribute)
+function modify(model::Benders.DecomposedModel, attribute::Solver.AbstractAttribute)
     models = attribute.model == :main ? [main(model)] : subs(model)
     for m in models
-        modify(m, attribute)
+        Solver._modify_jump(m, attribute)
     end
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-end
+include("main/cuts.jl")
+include("main/general.jl")
+include("main/objective.jl")
 
-import .Benders
-const BDModel = Benders.DecomposedModel
+include("sub/general.jl")
+include("sub/objective.jl")
+include("sub/relaxation.jl")
+include("sub/update.jl")

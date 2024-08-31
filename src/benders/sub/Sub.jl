@@ -1,19 +1,41 @@
 module Sub
 
 import JuMP
-
 import ...Decomposition: AbstractDecompositionAttribute, AbstractDecompositionQuery
-import ..Benders: DecomposedModel
-
-abstract type AbstractSolverAttribute <: AbstractDecompositionAttribute end
 
 abstract type AbstractFeasibilityMode <: AbstractDecompositionAttribute end
 
-include("general.jl")
-include("objective.jl")
-include("relaxation.jl")
-include("update.jl")
+abstract type AbstractObjectiveType <: AbstractDecompositionAttribute end
 
+@kwdef struct ObjectiveSelf <: AbstractObjectiveType
+    index::Int64 = -1
 end
 
-import .Sub
+@kwdef struct ObjectiveShared <: AbstractObjectiveType
+    index::Int64 = -1
+end
+
+abstract type AbstractRelaxationType <: AbstractDecompositionAttribute end
+
+@kwdef struct RelaxationAll <: AbstractRelaxationType
+    index::Int64 = -1
+    penalty::Float64 = 1e7
+
+    _penalty_map::Dict{JuMP.ConstraintRef, JuMP.AffExpr} = Dict{JuMP.ConstraintRef, JuMP.AffExpr}()
+end
+
+@kwdef struct RelaxationLinked <: AbstractRelaxationType
+    index::Int64 = -1
+    penalty::Float64 = 1e7
+end
+
+@kwdef struct RelaxationRegex <: AbstractRelaxationType
+    index::Int64 = -1
+    penalty::Float64 = 1e7
+
+    regex::Regex
+end
+
+@kwdef struct QueryRelaxation <: AbstractDecompositionQuery; end
+
+end

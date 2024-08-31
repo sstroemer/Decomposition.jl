@@ -9,6 +9,7 @@ import Graphs
 import JSON3
 import SHA
 import Printf
+using TimerOutputs
 
 abstract type AbstractDecompositionAttribute end
 abstract type AbstractDecompositionQuery end
@@ -60,5 +61,22 @@ include("external/solver/Solver.jl")
 include("benders/Benders.jl")
 
 include("external/esm/general.jl")
+
+function jump_model_from_file(args...; kwargs...)
+    jump_model = JuMP.read_from_file(args...; kwargs...)
+    jump_model.ext[:_model_name] = split(basename(args[1]), ".")[1]
+    return jump_model
+end
+
+# This is based on how JuMP automates exports, with slight modifications.
+# See: https://github.com/jump-dev/JuMP.jl which is licensed under MPL v2.0,
+# and lists: Copyright (c) 2017: Iain Dunning, Joey Huchette, Miles Lubin, and contributors.
+for sym in names(@__MODULE__; all = true)
+    (sym in [Symbol(@__MODULE__), :eval, :include]) && continue
+    sym_string = string(sym)   
+    (startswith(sym_string, "_") || startswith(sym_string, "@_")) && continue
+    Base.isidentifier(sym) || (startswith(sym_string, "@") && Base.isidentifier(sym_string[2:end])) || continue
+    @eval export $sym
+end
 
 end

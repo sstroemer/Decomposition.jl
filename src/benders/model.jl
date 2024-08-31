@@ -1,11 +1,19 @@
-@kwdef struct DecomposedModel1 <: AbstractDecomposedModel
-    name::String
-
-    monolithic::JuMP.Model
-    lpmd::JuMP.LPMatrixData
-
+@kwdef struct DecomposedModel5 <: AbstractDecomposedModel
+    jump_model::JuMP.Model
     T::Int64
     nof_temporal_splits::Int64
+
+    name::String = pop!(jump_model.ext, :_model_name, "unnamed")
+
+    # -------------
+
+    f_opt::Base.Callable = () -> @error "No optimizer provided; either set `f_opt`, or `f_opt_main` and `f_opt_sub`"
+    f_opt_main::Base.Callable = f_opt
+    f_opt_sub::Base.Callable = f_opt
+
+    # -------------
+
+    lpmd::JuMP.LPMatrixData = JuMP.lp_matrix_data(jump_model)
 
     # TODO: Store these as (sorted) vector (is that even needed?) and as set (for faster lookup)
     vis::Vector{Vector{Int64}} = Vector{Vector{Int64}}[]
@@ -21,7 +29,7 @@
 
     solutions = Dict{Symbol, Any}(
         :current => Dict{Symbol, Any}(
-            :main => nothing
+            :main => nothing,
             :subs => nothing
         ),
     )
@@ -45,171 +53,11 @@
         :optimality => JuMP.ConstraintRef[],
     )
 
-    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV)
-    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV)
-
     log::Vector{String} = String[]
 end
-DecomposedModel = DecomposedModel1
+DecomposedModel = DecomposedModel5
 
-abs_gap(x::Float64, y::Float64) = abs(x - y)
-function rel_gap(x::Float64, y::Float64)
-    tol = sqrt(eps(Float64))
-    lower = min(x, y)
-    upper = max(x, y)
-    gap = upper - lower
-
-    # This is similar to: https://www.gurobi.com/documentation/current/refman/mipgap2.html
-    # Note: Behaviour for `upper == 0` may not be as expected.
-
-    (isnan(gap) || !isfinite(gap)) && return +Inf
-    isapprox(upper, 0.0; atol=tol) && return isapprox(lower, 0.0; atol=tol) ? 0.0 : +Inf
-    return abs(gap / upper)
-end
-
-current_iteration(model::DecomposedModel) = length(model.info[:history])
-best_upper_bound(model::DecomposedModel) = minimum(it[:upper_bound] for it in model.info[:history]; init=+Inf)
-best_lower_bound(model::DecomposedModel) = maximum(it[:lower_bound] for it in model.info[:history]; init=-Inf)
-best_gap_abs(model::DecomposedModel) = abs_gap(best_lower_bound(model), best_upper_bound(model))
-best_gap_rel(model::DecomposedModel) = rel_gap(best_lower_bound(model), best_upper_bound(model))
-
-total_wall_time(model::DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history])
-total_cpu_time(model::DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history])
-
-function next_iteration!(model::DecomposedModel, added_cuts, est_Δt_wall; verbose::Bool=true, assumed_pcores::Int = 16)
-    nof_feas_cuts, nof_opt_cuts = added_cuts
-    iter = current_iteration(model)
-    curr_time = time_ns()
-
-    # Calculate the lower bound.
-    lb = model.info[:results][:main][:obj_f_val] # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
-
-    # Calculate the upper bound.
-    subs_obj = [it[:obj] for it in model.info[:results][:subs]]
-    ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
-    ub += model.info[:results][:main][:obj_f_val] - sum(model.info[:results][:main][:θ])
-    # TODO: Account here for stuff like "ObjectiveInCuts"
-
-    # Find all cuts that were added in this iteration.
-    new_cuts = OrderedDict(
-        :feasibility => model.cuts[:feasibility][(end-nof_feas_cuts+1):end],
-        :optimality => model.cuts[:optimality][(end-nof_opt_cuts+1):end],
-    )
-
-    # Estimate "batched" parallel processing of sub-model timings.
-    _t = est_Δt_wall[:subs]
-    _batches = [
-        _t[((i-1) * assumed_pcores + 1):min(i * assumed_pcores, end)]
-        for i in 1:ceil(Int, length(_t) / assumed_pcores)
-    ]
-    subs_wall_time = sum(maximum.(_batches))
-
-    # Prepare and add the history entry.
-    entry = OrderedDict(
-        # TODO: include "quality criteria":
-        #       - whether all sub-models are: (1) feasible, (2) w/o the use of artificial slacks
-        #       - conditioning, ... of main and sub-models
-        #       - ...
-        :iteration => iter,
-        :time => OrderedDict(
-            :timestamp => curr_time,
-            :wall => est_Δt_wall[:main] + subs_wall_time + est_Δt_wall[:aux],
-            :cpu => curr_time - (iter == 0 ? model.info[:stats][:started] : model.info[:history][end][:time][:timestamp]),
-            :estimate => est_Δt_wall,
-        ),
-        :lower_bound => lb,
-        :upper_bound => ub,
-        :gap_abs => abs_gap(lb, ub),
-        :gap_rel => rel_gap(lb, ub),
-        :added_cuts => OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts),
-        :added_cuts_con => new_cuts,
-    )
-    push!(model.info[:history], entry)
-
-    # Printing.
-    if verbose
-        if iter == 0
-            # Print motd-like header.
-            motd = [
-                "╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
-                "│ >> Decomposition.jl <<                                              [version::0.1.0  //  algorithm::benders] │",
-                "├────────┬───────────────────────────┬───────────────────────────┬───────────────────────────┬─────────────────┤",
-                "│        │      objective bound      │      current best gap     │    est. execution time    │   added cuts    │",
-                "├────────┼─────────────┬─────────────┼───────────────────────────┤─────────────┬─────────────┤────────┬────────┤",
-                "│   iter │       lower │       upper │    absolute │    relative │    wall [s] │     cpu [s] │  feas. │   opt. │",
-                "├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤",  
-            ]
-            append!(model.log, motd)
-            println.(motd)
-        end
-
-        push!(
-            model.log,
-            _print_iteration(
-                iter,
-                best_lower_bound(model),
-                best_upper_bound(model),
-                best_gap_abs(model),
-                best_gap_rel(model),
-                Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
-                Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
-                length(model.cuts[:feasibility]),
-                length(model.cuts[:optimality]),
-            )
-        )
-    end
-
-    return nothing
-end
-
-function check_termination(model::DecomposedModel)
-    # TODO: implement
-    return false
-end
-
-function save(model::DecomposedModel)
-    sio = IOBuffer()
-    JSON3.pretty(
-        sio,
-        OrderedDict(
-            "meta" => OrderedDict(
-                "version" => "0.1.0",
-                "algorithm" => "benders",
-                "name" => model.name,
-                "created" => model.info[:stats][:created],
-                "started" => model.info[:stats][:started],
-            ),
-            "inputs" => OrderedDict(
-                "timesteps" => model.T,
-                "splits" => model.nof_temporal_splits,
-            ),
-            "attributes" => showtostr.(model.attributes),
-            "models" => OrderedDict(
-                "main" => showtostr(main(model)),
-                "subs" => showtostr.(subs(model)),
-            ),
-            "cuts" => OrderedDict(
-                "feasibility" => length(model.cuts[:feasibility]),
-                "optimality" => length(model.cuts[:optimality]),
-            ),
-            "history" => filter.(k -> (k.first != :added_cuts_con), model.info[:history]),
-            "log" => join(model.log, "\n"),
-        ),
-        JSON3.AlignmentContext(alignment=:Left, indent=2);
-        allow_inf=true
-    )
-    
-    json_str = String(take!(sio))
-    short_hash = bytes2hex(SHA.sha1(json_str))[1:7]
-    filename = "$(model.name)_$(short_hash).djl.json"
-
-    open(normpath(mkpath("out"), filename), "w") do f
-        write(f, json_str)
-        @info "Saved model" filename
-    end
-
-    return nothing
-end
+Base.show(io::IO, model::DecomposedModel) = print(io, "DecomposedModel [algorithm=Benders]: $(model.name)")
 
 function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer)
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too

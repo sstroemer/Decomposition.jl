@@ -1,6 +1,8 @@
-abstract type ExternalESM end
+abstract type AbstractExternalESM end
 
-function generate_annotation(model::AbstractDecomposedModel, ext_fw::ExternalESM)
+# TODO: this should be split into "annotate!(...)" and "build!(...)"
+
+function generate_annotation(model::AbstractDecomposedModel, ext_fw::AbstractExternalESM)
     @error "Not implemented"
 end
 

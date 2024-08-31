@@ -1,4 +1,4 @@
-function update_fixed_variables(model::DecomposedModel, current_solution::JuMP.Containers.DenseAxisArray)
+@timeit function update_fixed_variables(model::Benders.DecomposedModel, current_solution::JuMP.Containers.DenseAxisArray)
     for i in 1:(length(model.models) - 1)
         m_sub = sub(model; index=i)
         for j in current_solution.axes[1]

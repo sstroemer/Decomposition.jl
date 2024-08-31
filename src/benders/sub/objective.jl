@@ -1,14 +1,4 @@
-abstract type AbstractObjectiveType <: AbstractDecompositionAttribute end
-
-@kwdef struct ObjectiveSelf <: AbstractObjectiveType
-    index::Int64 = -1
-end
-
-@kwdef struct ObjectiveShared <: AbstractObjectiveType
-    index::Int64 = -1
-end
-
-function modify(model::DecomposedModel, attribute::ObjectiveSelf)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveSelf)
     vis_main = model.vis[1]
 
     for i in 1:(length(model.models) - 1)
@@ -26,11 +16,11 @@ function modify(model::DecomposedModel, attribute::ObjectiveSelf)
         JuMP.@objective(m_sub, Min, m_sub[:obj])
     end
 
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-function modify(model::DecomposedModel, attribute::ObjectiveShared)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveShared)
     # TODO: Implement this
     @error "This does not work yet (multiple subs need to correctly SHARE main-variable costs)!"
 

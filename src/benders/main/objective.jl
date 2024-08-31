@@ -1,10 +1,4 @@
-abstract type AbstractObjectiveType <: AbstractDecompositionAttribute end
-
-@kwdef struct ObjectiveConstOnly <: AbstractObjectiveType; end
-@kwdef struct ObjectiveDefault <: AbstractObjectiveType; end
-@kwdef struct ObjectiveInCuts <: AbstractObjectiveType; end
-
-function modify(model::DecomposedModel, attribute::ObjectiveConstOnly)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Main.ObjectiveConstOnly)
     @error "Currently not implemented"
     return nothing
 
@@ -14,18 +8,18 @@ function modify(model::DecomposedModel, attribute::ObjectiveConstOnly)
     # return nothing
 end
 
-function modify(model::DecomposedModel, attribute::ObjectiveDefault)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Main.ObjectiveDefault)
     JuMP.@objective(
         main(model),
         Min,
         model.lpmd.c_offset + model.lpmd.c[model.vis[1]]' * main(model)[:x].data + sum(main(model)[:θ])
     )
 
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-function modify(model::DecomposedModel, attribute::ObjectiveInCuts)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Main.ObjectiveInCuts)
     @error "Currently not implemented"
     return nothing
 

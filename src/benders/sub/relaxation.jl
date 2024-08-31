@@ -1,25 +1,4 @@
-abstract type AbstractRelaxationType <: AbstractDecompositionAttribute end
-
-@kwdef struct RelaxationAll <: AbstractRelaxationType
-    index::Int64 = -1
-    penalty::Float64 = 1e7
-
-    _penalty_map::Dict{JuMP.ConstraintRef, JuMP.AffExpr} = Dict{JuMP.ConstraintRef, JuMP.AffExpr}()
-end
-
-@kwdef struct RelaxationLinked <: AbstractRelaxationType
-    index::Int64 = -1
-    penalty::Float64 = 1e7
-end
-
-@kwdef struct RelaxationRegex <: AbstractRelaxationType
-    index::Int64 = -1
-    penalty::Float64 = 1e7
-
-    regex::Regex
-end
-
-function modify(model::DecomposedModel, attribute::RelaxationAll)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationAll)
     @warn "`RelaxationAll` is currently untested ..."
 
     for i in 1:(length(model.models) - 1)
@@ -37,12 +16,12 @@ function modify(model::DecomposedModel, attribute::RelaxationAll)
     # relax_with_penalty!(bd_sub(model), Dict(linking_constraints .=> penalty))
     # merge!(attribute.penalty_map, relax_with_penalty!(m; default = attribute.penalty))
     
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-function modify(model::DecomposedModel, attribute::RelaxationLinked)
-    vis_main = model.idx_model_vars[1]
+function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationLinked)
+    vis_main = model.vis[1]
 
     for i in 1:(length(model.models) - 1)
         attribute.index == -1 || attribute.index == i || continue
@@ -68,11 +47,11 @@ function modify(model::DecomposedModel, attribute::RelaxationLinked)
         JuMP.@objective(m_sub, Min, JuMP.objective_function(m_sub) + exp_penalty)
     end
 
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-function modify(model::DecomposedModel, attribute::RelaxationRegex)
+function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationRegex)
     vn_main = JuMP.name.(model.lpmd.variables[model.vis[1]])
     vis_filtered_main = [vi for (vi, vn) in zip(model.vis[1], vn_main) if !isnothing(match(attribute.regex, vn))]
 
@@ -100,13 +79,11 @@ function modify(model::DecomposedModel, attribute::RelaxationRegex)
         JuMP.@objective(m_sub, Min, JuMP.objective_function(m_sub) + exp_penalty)
     end
 
-    add_attribute!(model.attributes, attribute)
+    add_attribute!(model, attribute)
     return nothing
 end
 
-@kwdef struct QueryRelaxation <: AbstractDecompositionQuery; end
-
-function query(model::DecomposedModel, query::QueryRelaxation)
+function query(model::Benders.DecomposedModel, query::Benders.Sub.QueryRelaxation)
     # TODO: account for different previous ways to ensure feasibility (by checking the list of attributes/modifications)
     violation = sum(JuMP.value.(sub(model)[:z_pos])) + sum(JuMP.value.(sub(model)[:z_neg]))
     return isapprox(violation, 0.0; atol=1e-6)

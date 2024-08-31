@@ -4,27 +4,28 @@ import JuMP
 
 import ..Decomposition: AbstractDecompositionAttribute
 
-abstract type AbstractSolverAttribute <: AbstractDecompositionAttribute end
+abstract type AbstractAttribute <: AbstractDecompositionAttribute end
 
-@kwdef struct AlgorithmSimplex <: AbstractSolverAttribute
+@kwdef struct AlgorithmSimplex <: AbstractAttribute
     model::Any
     mode::Symbol = :dual
 end
 
-@kwdef struct AlgorithmIPM <: AbstractSolverAttribute
+@kwdef struct AlgorithmIPM <: AbstractAttribute
     model::Any
     mode::Symbol = :none
     crossover::Bool = false
 end
 
-@kwdef struct ExtractDualRay <: AbstractSolverAttribute
+@kwdef struct ExtractDualRay <: AbstractAttribute
+    model::Any
     activate::Bool = true
 end
 
 include("gurobi.jl")
 include("highs.jl")
 
-function modify(jump_model::JuMP.Model, attribute::AbstractSolverAttribute)
+function _modify_jump(jump_model::JuMP.Model, attribute::AbstractAttribute)
     solver_functions = Dict(
         "Gurobi" => _gurobi_modify_jump,
         "HiGHS" => _highs_modify_jump,
