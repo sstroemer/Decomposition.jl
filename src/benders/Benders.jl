@@ -74,6 +74,9 @@ end
 include("main/cuts.jl")
 include("main/general.jl")
 include("main/objective.jl")
+include("main/regularization.jl")
+include("main/solve.jl")    # should this be inside Main? (Main.solve, instead of solve_main)
+include("main/extract.jl")  # should this be inside Main? (Main.extract, instead of extract_main)
 
 include("sub/objective.jl")
 include("sub/relaxation.jl")

@@ -1,3 +1,21 @@
+function get_obj_lb_main(model::Benders.DecomposedModel)
+    # TODO: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+    return jump_objective_lb(main(model))
+end
+
+function get_obj_ub_main(model::Benders.DecomposedModel)
+    # TODO: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+    return jump_objective_ub(main(model))
+end
+
+function get_obj_base_main(model::Benders.DecomposedModel)
+    if !haskey(main(model), :obj_base)
+        JuMP.@expression(main(model), obj_base, model.lpmd.c_offset + model.lpmd.c[model.vis[1]]' * main(model)[:x].data)
+    end
+
+    return main(model)[:obj_base]
+end
+
 function modify(model::Benders.DecomposedModel, attribute::Benders.Main.ObjectiveConstOnly)
     @error "Currently not implemented"
     return nothing
@@ -9,11 +27,8 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Main.Objectiv
 end
 
 function modify(model::Benders.DecomposedModel, attribute::Benders.Main.ObjectiveDefault)
-    JuMP.@objective(
-        main(model),
-        Min,
-        model.lpmd.c_offset + model.lpmd.c[model.vis[1]]' * main(model)[:x].data + sum(main(model)[:θ])
-    )
+    JuMP.@expression(main(model), obj_full, get_obj_base_main(model) + sum(main(model)[:θ]))
+    JuMP.@objective(main(model), Min, obj_full)
 
     add_attribute!(model, attribute)
     return nothing

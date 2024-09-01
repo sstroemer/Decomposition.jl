@@ -46,6 +46,11 @@ function get_attribute(model::AbstractDecomposedModel, ::Type{T}) where T <: Abs
     return nothing
 end
 
+function process_hook(model::AbstractDecomposedModel, when::Symbol, attribute::AbstractDecompositionAttribute)
+    @error "`process_hook(...)` not implemented for these types" model = typeof(model) when attribute = typeof(attribute)
+    return nothing
+end
+
 function Base.show(io::IO, attribute::AbstractDecompositionAttribute)
     str = "$(typeof(attribute))("
     str *= join(["$(prop)=$(getfield(attribute, prop))" for prop in propertynames(attribute)], ",")

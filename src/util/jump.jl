@@ -1,5 +1,5 @@
-function jump_objective_lb(jump_model::JuMP.Model)
-    JuMP.is_solved_and_feasible(jump_model) || return missing
+function jump_objective_lb(jump_model::JuMP.Model; require_feasibility::Bool=true)
+    require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     obj_primal = try; JuMP.objective_value(jump_model); catch; +Inf; end
     obj_dual = try; JuMP.dual_objective_value(jump_model); catch; +Inf; end
@@ -8,8 +8,8 @@ function jump_objective_lb(jump_model::JuMP.Model)
     return min(obj_primal, obj_dual, obj_fval)
 end
 
-function jump_objective_ub(jump_model::JuMP.Model)
-    JuMP.is_solved_and_feasible(jump_model) || return missing
+function jump_objective_ub(jump_model::JuMP.Model; require_feasibility::Bool=true)
+    require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     obj_primal = try; JuMP.objective_value(jump_model); catch; -Inf; end
     obj_dual = try; JuMP.dual_objective_value(jump_model); catch; -Inf; end

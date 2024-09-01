@@ -126,5 +126,11 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
     JuMP.@constraint(model, lpmd.A[add_ge, idx_v] * x.data .>= lpmd.b_lower[add_ge])
     JuMP.@constraint(model, lpmd.A[add_lt, idx_v] * x.data .<= lpmd.b_upper[add_lt])
 
+    # Add default processes.
+    model.ext[:processes] = Dict(
+        :solve => [() -> JuMP.optimize!(model)],
+        :extract => [],
+    )
+
     return model
 end

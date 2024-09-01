@@ -1,16 +1,7 @@
-function iterate!(model::Benders.DecomposedModel)
+function iterate!(model::Benders.DecomposedModel)   
     @timeit model.timer "main" begin
-        @timeit model.timer "optimize" JuMP.optimize!(main(model))
-
-        @timeit model.timer "extract solution" begin
-            # TODO: move this into a function, that also handles stuff like BD_MainObjectiveCon
-            model.info[:results][:main][:θ] = JuMP.value.(main(model)[:θ])
-            model.info[:results][:main][:obj] = JuMP.objective_value(main(model))
-            model.info[:results][:main][:obj_f_val] = JuMP.value(JuMP.objective_function(main(model)))  # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
-            # model.info[:results][:main][:obj_exp] = bd_has_attribute_type(model, BD_MainObjectiveCon) ? value(bd_main(model)[:obj]) : nothing
-            model.info[:results][:main][:sol] = JuMP.value.(main(model)[:x])
-            nothing
-        end
+        @timeit model.timer "optimize" solve_main(model)
+        @timeit model.timer "extract solution" extract_main(model)
     end
 
     # TODO: we could abort here if the gap is small enough (saving one final sub-model iteration) ?
@@ -23,8 +14,6 @@ function iterate!(model::Benders.DecomposedModel)
     #     # TODO:
     #     # MOI.Utilities.reset_optimizer(bd_sub(model; index=i))   # only works for non-direct mode
     # end
-
-    model.info[:results][:subs] = []
 
     @timeit model.timer "sub" begin
         for i in 1:(length(model.models) - 1)

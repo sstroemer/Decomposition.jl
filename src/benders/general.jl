@@ -35,14 +35,15 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     iter = current_iteration(model)
     curr_time = time_ns()
 
+    # TODO: move the 2 steps afterwards into a separate function "calc_global_bounds"
+
     # Calculate the lower bound.
-    lb = model.info[:results][:main][:obj_f_val] # TODO: should be `res_main_obj`? see: https://discourse.julialang.org/t/detecting-problems-with-numerically-challenging-models/118592
+    lb = model.info[:results][:main][:obj_lb]
 
     # Calculate the upper bound.
     subs_obj = [it[:obj] for it in model.info[:results][:subs]]
     ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
-    ub += model.info[:results][:main][:obj_f_val] - sum(model.info[:results][:main][:θ])
-    # TODO: Account here for stuff like "ObjectiveInCuts"
+    ub += model.info[:results][:main][:obj_base]
 
     # Find all cuts that were added in this iteration.
     new_cuts = OrderedDict(
@@ -114,6 +115,12 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
             )
         )
     end
+
+    # Clean "results" for next iteration.
+    model.info[:results] = OrderedDict{Symbol, Any}(
+        :main => OrderedDict{Symbol, Any}(),
+        :subs => Vector{Dict}()
+    )
 
     return nothing
 end
