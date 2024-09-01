@@ -75,5 +75,9 @@ function iterate!(model::Benders.DecomposedModel)
     #     break
     # end
 
-    return check_termination(model)
+    terminate = check_termination(model)
+    if terminate
+        @info "Model statistics" lb = best_lower_bound(model) ub = best_upper_bound(model) ncuts_feas = length(model.cuts[:feasibility]) ncuts_opt = length(model.cuts[:optimality])
+    end
+    return terminate
 end
