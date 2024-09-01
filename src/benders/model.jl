@@ -54,6 +54,7 @@
     )
 
     log::Vector{String} = String[]
+    timer::TimerOutput = TimerOutput()
 end
 DecomposedModel = DecomposedModel5
 

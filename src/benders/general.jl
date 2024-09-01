@@ -24,10 +24,13 @@ best_lower_bound(model::Benders.DecomposedModel) = maximum(it[:lower_bound] for 
 best_gap_abs(model::Benders.DecomposedModel) = abs_gap(best_lower_bound(model), best_upper_bound(model))
 best_gap_rel(model::Benders.DecomposedModel) = rel_gap(best_lower_bound(model), best_upper_bound(model))
 
-total_wall_time(model::Benders.DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history])
-total_cpu_time(model::Benders.DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history])
+total_wall_time(model::Benders.DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history]; init=0)
+total_cpu_time(model::Benders.DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history]; init=0)
 
-function next_iteration!(model::Benders.DecomposedModel, added_cuts, est_Δt_wall; verbose::Bool=true, assumed_pcores::Int = 16)
+get_main_time(model::Benders.DecomposedModel) = TimerOutputs.time(model.timer["main"])
+get_sub_time(model::Benders.DecomposedModel; index::Int) = TimerOutputs.time(model.timer["sub"]["[$(index)]"])
+
+function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bool=true, assumed_pcores::Int = 16)
     nof_feas_cuts, nof_opt_cuts = added_cuts
     iter = current_iteration(model)
     curr_time = time_ns()
@@ -48,12 +51,14 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts, est_Δt_wal
     )
 
     # Estimate "batched" parallel processing of sub-model timings.
-    _t = est_Δt_wall[:subs]
-    _batches = [
-        _t[((i-1) * assumed_pcores + 1):min(i * assumed_pcores, end)]
-        for i in 1:ceil(Int, length(_t) / assumed_pcores)
-    ]
-    subs_wall_time = sum(maximum.(_batches); init=Inf)
+    # TODO: Reimplement this for TimerOutputs
+    time_est = get_main_time(model) + sum(get_sub_time(model, index=i) for i in 1:length(subs(model))) - total_wall_time(model)
+    # _t = est_Δt_wall[:subs]
+    # _batches = [
+    #     _t[((i-1) * assumed_pcores + 1):min(i * assumed_pcores, end)]
+    #     for i in 1:ceil(Int, length(_t) / assumed_pcores)
+    # ]
+    # subs_wall_time = sum(maximum.(_batches); init=Inf)
 
     # Prepare and add the history entry.
     entry = OrderedDict(
@@ -64,9 +69,9 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts, est_Δt_wal
         :iteration => iter,
         :time => OrderedDict(
             :timestamp => curr_time,
-            :wall => est_Δt_wall[:main] + subs_wall_time + est_Δt_wall[:aux],
-            :cpu => curr_time - (iter == 0 ? model.info[:stats][:started] : model.info[:history][end][:time][:timestamp]),
-            :estimate => est_Δt_wall,
+            :wall => time_est, # TODO
+            :cpu => time_est,  # TODO
+            :estimate => time_est,  # TODO
         ),
         :lower_bound => lb,
         :upper_bound => ub,
@@ -102,8 +107,8 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts, est_Δt_wal
                 best_upper_bound(model),
                 best_gap_abs(model),
                 best_gap_rel(model),
-                "-", #Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
-                "-", #Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
+                Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
+                Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
                 length(model.cuts[:feasibility]),
                 length(model.cuts[:optimality]),
             )
@@ -111,11 +116,6 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts, est_Δt_wal
     end
 
     return nothing
-end
-
-function check_termination(model::Benders.DecomposedModel)
-    # TODO: implement
-    return false
 end
 
 function save(model::Benders.DecomposedModel)

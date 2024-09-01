@@ -3,15 +3,17 @@ module Benders
 import JuMP
 import OrderedCollections: OrderedDict
 
-import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel
+import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel, TimerOutput
 
 include("model.jl")
 
 include("main/Main.jl")
 include("sub/Sub.jl")
+include("termination/Termination.jl")
 
 import .Main
 import .Sub
+import .Termination
 
 function check_cut_type(jump_model::JuMP.Model; verbose::Bool = true)
     if JuMP.is_solved_and_feasible(jump_model)
@@ -73,7 +75,8 @@ include("main/cuts.jl")
 include("main/general.jl")
 include("main/objective.jl")
 
-include("sub/general.jl")
 include("sub/objective.jl")
 include("sub/relaxation.jl")
-include("sub/update.jl")
+
+include("termination/termination.jl")
+include("iterate.jl")
