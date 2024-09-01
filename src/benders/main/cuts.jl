@@ -41,7 +41,7 @@ function generate_cuts(model::Benders.DecomposedModel)
 
         if cut_type == :optimality && gen_opt_cuts
             exp_cut = JuMP.AffExpr(0.0)
-            JuMP.add_to_expression!(exp_cut, model.info[:results][:subs][i][:obj])  # TODO: this should be the "lower bound of the sub-model"
+            JuMP.add_to_expression!(exp_cut, model.info[:results][:subs][i][:obj_lb])
 
             # TODO: check if this works as expected
             # if has_attribute_type(model, BD_MainObjectiveCon)

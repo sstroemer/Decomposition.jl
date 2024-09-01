@@ -50,8 +50,10 @@ function iterate!(model::Benders.DecomposedModel)
                     push!(
                         model.info[:results][:subs],
                         Dict(
-                            :obj => JuMP.is_solved_and_feasible(m_sub) ? JuMP.objective_value(m_sub) : missing,
-                            :obj_dual => JuMP.has_duals(m_sub) ? JuMP.dual_objective_value(m_sub) : missing,
+                            :obj => jump_safe_objective_value(m_sub),
+                            :obj_dual => jump_safe_dual_objective_value(m_sub; require_feasibility=false),
+                            :obj_lb => jump_objective_lb(m_sub),
+                            :obj_ub => jump_objective_ub(m_sub),
                         )
                     )
                     nothing
