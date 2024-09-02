@@ -4,11 +4,11 @@
 # TODO: check sense, integer, binary, for Min, none, none
 
 
-# import JuMP
+using JuMP
 import HiGHS, Gurobi
 using Decomposition
 
-# const GRB_ENV = Gurobi.Env()
+const GRB_ENV = Gurobi.Env()
 
 # using Logging
 # SWITCH_TO_DEBUG = false
@@ -18,19 +18,28 @@ using Decomposition
 #     global_logger(ConsoleLogger(stderr, Logging.Info))
 # end
 
-T = 120
-nof_temporal_splits = 5
+# T744  => obj::1.940256749e+06
+# T2184 => obj::5.821398080e+06
+# T4368 => obj::1.114810594e+07
+
+T = 744
+nof_temporal_splits = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
 
 # Decomposition.JuMP.set_optimizer(jump_model, Gurobi.Optimizer)
+# Decomposition.JuMP.set_optimizer(jump_model, HiGHS.Optimizer)
 # Decomposition.JuMP.optimize!(jump_model)
 
-model = Benders.DecomposedModel(; jump_model, T, nof_temporal_splits, f_opt = Gurobi.Optimizer)
+# Gurobi.Optimizer(GRB_ENV)   ||   HiGHS.Optimizer()
+model = Benders.DecomposedModel(; jump_model, T, nof_temporal_splits, f_opt = () -> HiGHS.Optimizer())
 generate_annotation(model, Calliope())
 
 modify(model, Solver.AlgorithmIPM(model = :main))
+# TODO: it seems like solving sub models with IPM + crossover does not allow extracting dual rays...?
 
+# modify(model, Solver.AlgorithmIPM(model = :sub))
 modify(model, Solver.ExtractDualRay(model = :sub))
+
 modify(model, Benders.Main.FeasibilityCutTypeMulti())
 modify(model, Benders.Main.OptimalityCutTypeMulti())
 
@@ -41,16 +50,31 @@ modify(model, Benders.Main.VirtualSoftBounds(0.0, 1e6))
 
 # modify(model, Benders.Sub.RelaxationLinked(-1, 1e6))
 
+modify(model, Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1))
+
 modify(model, Benders.Termination.Stop(opt_gap_rel = 1e-2))
 
-for k in 1:100
-    iterate!(model) && break
-end
+# JuMP.set_attribute(main(model), "ipm_optimality_tolerance", 1e-1)
+# JuMP.set_attribute(main(model), "dual_feasibility_tolerance", 1e-3)
+
+# for m in subs(model)
+#     # JuMP.set_attribute(m, "ipm_optimality_tolerance", 1e-8)
+#     JuMP.set_attribute(m, "primal_feasibility_tolerance", 1e-7) # ?
+#     JuMP.set_attribute(m, "dual_feasibility_tolerance", 1e-3)   # lower seems better
+# end
+
+# These two may help HiGHS, but may (considerably) hurt Gurobi
+modify(model, Benders.CutPreprocessingRemoveRedundant())
+modify(model, Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4))  # this may even hurt without `CutPreprocessingRemoveRedundant`, but together with it it helps (a lot)
+
+finalize!(model)
+
+while !iterate!(model); end
+
+summarize_timings(model)
 
 save(model)
 # TODO: bd_query(model, BD_SubFeasibility())
-
-
 
 
 

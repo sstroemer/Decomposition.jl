@@ -88,6 +88,7 @@ include("main/extract.jl")  # should this be inside Main? (Main.extract, instead
 
 include("sub/objective.jl")
 include("sub/relaxation.jl")
+include("sub/solve.jl")
 include("sub/extract.jl")
 
 include("termination/termination.jl")

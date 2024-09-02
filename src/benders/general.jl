@@ -42,7 +42,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     # TODO: move the 2 steps afterwards into a separate function "calc_global_bounds"
 
     # Calculate the lower bound.
-    lb = model.info[:results][:main][:obj_lb]
+    lb = coalesce(model.info[:results][:main][:obj_lb], -Inf)
 
     # Calculate the upper bound.
     subs_obj = [it[:obj] for it in model.info[:results][:subs]]

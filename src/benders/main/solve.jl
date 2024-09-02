@@ -33,6 +33,16 @@ function solve_main(model::Benders.DecomposedModel)
                     # TODO: afterwards remove the `require_feasibility` setting above too!
                 end
 
+                if !isfinite(candidate)
+                    # TODO: fix this
+                    # This happens with HiGHS if crossover is "imprecise", leading to a simplex cleanup, which then
+                    # might indicate an unbounded problem (even if it is not).
+                    # Try again, this time without crossover ... and just take the primal result.
+                    JuMP.set_attribute(main(model), "run_crossover", "off")
+                    JuMP.optimize!(main(model))
+                    candidate = JuMP.objective_value(main(model))
+                end
+
                 if JuMP.solver_name(main(model)) == "HiGHS" && !isnothing(reset_run_crossover)
                     # TODO: remove this workaround
                     JuMP.set_attribute(main(model), "run_crossover", reset_run_crossover)
@@ -41,8 +51,6 @@ function solve_main(model::Benders.DecomposedModel)
                 candidate
             end
             model.info[:results][:main][:obj_lb] = lb
-            
-            # @show lb ub JuMP.dual_status(main(model)) JuMP.has_duals(main(model)) JuMP.dual_objective_value(main(model))
 
             # Switch to level-set mode.
             JuMP.@objective(main(model), Min, 0)  # TODO: is there a better way to switch to feasibility mode?
