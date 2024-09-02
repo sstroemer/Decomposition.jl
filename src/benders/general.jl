@@ -1,3 +1,13 @@
+function finalize!(model::Benders.DecomposedModel)
+    model.info[:results] = OrderedDict{Symbol, Any}(
+        :main => OrderedDict{Symbol, Any}(),
+        :subs => [OrderedDict{Symbol, Any}() for _ in subs(model)],
+    )
+
+    # TODO: identify "trivial" sub-models here, and "remove" them
+
+    return nothing
+end
 
 abs_gap(x::Float64, y::Float64) = abs(x - y)
 function rel_gap(x::Float64, y::Float64)
@@ -23,12 +33,6 @@ best_upper_bound(model::Benders.DecomposedModel) = minimum(it[:upper_bound] for 
 best_lower_bound(model::Benders.DecomposedModel) = maximum(it[:lower_bound] for it in model.info[:history]; init=-Inf)
 best_gap_abs(model::Benders.DecomposedModel) = abs_gap(best_lower_bound(model), best_upper_bound(model))
 best_gap_rel(model::Benders.DecomposedModel) = rel_gap(best_lower_bound(model), best_upper_bound(model))
-
-total_wall_time(model::Benders.DecomposedModel) = sum(it[:time][:wall] for it in model.info[:history]; init=0)
-total_cpu_time(model::Benders.DecomposedModel) = sum(it[:time][:cpu] for it in model.info[:history]; init=0)
-
-get_main_time(model::Benders.DecomposedModel) = TimerOutputs.time(model.timer["main"])
-get_sub_time(model::Benders.DecomposedModel; index::Int) = TimerOutputs.time(model.timer["sub"]["[$(index)]"])
 
 function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bool=true, assumed_pcores::Int = 16)
     nof_feas_cuts, nof_opt_cuts = added_cuts
@@ -119,7 +123,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     # Clean "results" for next iteration.
     model.info[:results] = OrderedDict{Symbol, Any}(
         :main => OrderedDict{Symbol, Any}(),
-        :subs => Vector{Dict}()
+        :subs => [OrderedDict{Symbol, Any}() for _ in subs(model)],
     )
 
     return nothing

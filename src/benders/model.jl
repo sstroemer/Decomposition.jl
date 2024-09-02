@@ -44,13 +44,13 @@
         :results => OrderedDict{Symbol, Any}(
             # TODO: merge this (that only holds "objective values") into `solutions`
             :main => OrderedDict{Symbol, Any}(),
-            :subs => Vector{Dict}()
+            :subs => Vector{OrderedDict{Symbol, Any}}(),
         )
     )
 
-    cuts = OrderedDict{Symbol, Vector{JuMP.ConstraintRef}}(
-        :feasibility => JuMP.ConstraintRef[],
-        :optimality => JuMP.ConstraintRef[],
+    cuts = OrderedDict{Symbol, Vector{AbstractCut}}(
+        :feasibility => AbstractCut[],
+        :optimality => AbstractCut[],
     )
 
     log::Vector{String} = String[]

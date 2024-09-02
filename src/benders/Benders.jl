@@ -4,7 +4,9 @@ import JuMP
 import OrderedCollections: OrderedDict
 
 import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel, TimerOutput
+import ..Decomposition.AbstractCut as Decomposition_AbtractCut
 
+include("cuts.jl")
 include("model.jl")
 
 include("main/Main.jl")
@@ -32,6 +34,7 @@ end
 
 import .Benders
 
+include("timing.jl")
 include("general.jl")
 
 function has_attribute_type(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
@@ -71,6 +74,11 @@ function modify(model::Benders.DecomposedModel, attribute::Solver.AbstractAttrib
     return nothing
 end
 
+function modify(model::Benders.DecomposedModel, attribute::Benders.AbstractCutProcessing)
+    add_attribute!(model, attribute)
+    return nothing
+end
+
 include("main/cuts.jl")
 include("main/general.jl")
 include("main/objective.jl")
@@ -80,6 +88,7 @@ include("main/extract.jl")  # should this be inside Main? (Main.extract, instead
 
 include("sub/objective.jl")
 include("sub/relaxation.jl")
+include("sub/extract.jl")
 
 include("termination/termination.jl")
 include("iterate.jl")

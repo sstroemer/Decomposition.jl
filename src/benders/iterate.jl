@@ -35,25 +35,18 @@ function iterate!(model::Benders.DecomposedModel)
                 # Solve the sub-model.
                 @timeit model.timer "optimize" JuMP.optimize!(m_sub)
 
-                @timeit model.timer "extract solution" begin
-                    push!(
-                        model.info[:results][:subs],
-                        Dict(
-                            :obj => jump_safe_objective_value(m_sub),
-                            :obj_dual => jump_safe_dual_objective_value(m_sub; require_feasibility=false),
-                            :obj_lb => jump_objective_lb(m_sub),
-                            :obj_ub => jump_objective_ub(m_sub),
-                        )
-                    )
-                    nothing
-                end
+                extract_sub(model; index=i)
             end
         end
     end
 
     added_cuts = @timeit model.timer "main" begin
         new_cuts = @timeit model.timer "cuts (generate)" generate_cuts(model)
-        @timeit model.timer "cuts (add)" add_cuts(model, new_cuts)
+        @timeit model.timer "cuts (preprocess)" preprocess_cuts!(model, new_cuts)
+        added_cuts = @timeit model.timer "cuts (add)" add_cuts(model, new_cuts)
+        @timeit model.timer "cuts (postprocess)" postprocess_cuts!(model)
+
+        added_cuts
     end
     
     # Pass added cuts and timings (in nanoseconds) to `next_iteration!`.
