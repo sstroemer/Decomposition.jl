@@ -14,6 +14,7 @@ using TimerOutputs
 abstract type AbstractDecompositionAttribute end
 abstract type AbstractDecompositionQuery end
 abstract type AbstractDecomposedModel end
+abstract type AbstractCut end
 
 function add_attribute!(model::AbstractDecomposedModel, attribute::AbstractDecompositionAttribute)
     push!(model.attributes, attribute)
