@@ -11,6 +11,13 @@ function solve_main(model::Benders.DecomposedModel)
 
             # Get the current lower bound.
             lb = begin
+                reset_run_crossover = nothing
+                if JuMP.solver_name(main(model)) == "HiGHS"
+                    # TODO: remove this workaround
+                    reset_run_crossover = JuMP.get_attribute(main(model), "run_crossover")
+                    JuMP.set_attribute(main(model), "run_crossover", "on")
+                end
+                
                 JuMP.@objective(main(model), Min, main(model)[:obj_full])
                 # TODO: only have the `reg_levelset_constraint` active if doing the actual level-set calculation
                 #       instead of:
@@ -18,13 +25,17 @@ function solve_main(model::Benders.DecomposedModel)
                 JuMP.optimize!(main(model))
                 
                 candidate = jump_objective_lb(main(model); require_feasibility=false)
-
                 if ismissing(candidate)
                     # TODO: fix this
                     # This is a workaround for HiGHS not finding a valid dual solution form the previous warm-start, but finding one by just re-running...
                     JuMP.optimize!(main(model))
                     candidate = jump_objective_lb(main(model); require_feasibility=false)
                     # TODO: afterwards remove the `require_feasibility` setting above too!
+                end
+
+                if JuMP.solver_name(main(model)) == "HiGHS" && !isnothing(reset_run_crossover)
+                    # TODO: remove this workaround
+                    JuMP.set_attribute(main(model), "run_crossover", reset_run_crossover)
                 end
 
                 candidate
