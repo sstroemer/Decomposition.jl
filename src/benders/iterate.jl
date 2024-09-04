@@ -1,4 +1,4 @@
-function iterate!(model::Benders.DecomposedModel)   
+function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)   
     @timeit model.timer "main" begin
         @timeit model.timer "optimize" solve_main(model)
         @timeit model.timer "extract solution" extract_main(model)
@@ -6,11 +6,29 @@ function iterate!(model::Benders.DecomposedModel)
 
     # TODO: we could abort here if the gap is small enough (saving one final sub-model iteration) ?
 
+    sub_batching = nothing
+    if nthreads > 1
+        @timeit model.timer "main" begin
+                sub_batching = @timeit model.timer "orchestrate" allocate_sub_models(model, nthreads)
+        end
+    end
+
     @timeit model.timer "sub" begin
-        for i in 1:(length(model.models) - 1)
-            @timeit model.timer "[$i]" begin
-                solve_sub(model; index=i)
-                extract_sub(model; index=i)
+        if nthreads < 1
+            for i in 1:(length(model.models) - 1)
+                @timeit model.timer "[$i]" begin
+                    solve_sub(model; index=i)
+                    extract_sub(model; index=i)
+                end
+            end
+        else
+            Threads.@threads for batch in sub_batching
+                for i in batch
+                    @timeit model.timer "[$i]" begin
+                        solve_sub(model; index=i)
+                        extract_sub(model; index=i)
+                    end
+                end
             end
         end
     end
