@@ -58,6 +58,7 @@
 end
 DecomposedModel = DecomposedModel5
 
+Base.Broadcast.broadcastable(model::DecomposedModel) = Ref(model)
 Base.show(io::IO, model::DecomposedModel) = print(io, "DecomposedModel [algorithm=Benders]: $(model.name)")
 
 function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer)
