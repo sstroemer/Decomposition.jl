@@ -1,4 +1,4 @@
-module Main
+module Main  # TODO: this should not be named main to not conflict with Julia's Main
 
 import ...Decomposition: AbstractDecompositionAttribute
 
