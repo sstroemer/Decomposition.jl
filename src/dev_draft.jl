@@ -17,42 +17,75 @@ const GRB_ENV = Gurobi.Env()
 # else
 #     global_logger(ConsoleLogger(stderr, Logging.Info))
 # end
+#
+# using Chairmarks
 
 # T744  => obj::1.940256749e+06
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 744
+T = 4368
 nof_temporal_splits = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
+jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
 # Decomposition.JuMP.set_optimizer(jump_model, Gurobi.Optimizer)
 # Decomposition.JuMP.set_optimizer(jump_model, HiGHS.Optimizer)
+# Decomposition.JuMP.set_attribute(jump_model, "solver", "ipm")
+# Decomposition.JuMP.set_attribute(jump_model, "run_crossover", "off")
+# Decomposition.JuMP.set_attribute(jump_model, "ipm_optimality_tolerance", 1e-2)
+# Decomposition.JuMP.set_attribute(jump_model, "Method", 2)
+# Decomposition.JuMP.set_attribute(jump_model, "Crossover", 0)
+# Decomposition.JuMP.set_attribute(jump_model, "BarHomogeneous", 1)
 # Decomposition.JuMP.optimize!(jump_model)
 
 # Gurobi.Optimizer(GRB_ENV)   ||   HiGHS.Optimizer()
-model = Benders.DecomposedModel(; jump_model, T, nof_temporal_splits, f_opt = () -> HiGHS.Optimizer())
+model = Benders.DecomposedModel(; jump_model, T, nof_temporal_splits, f_opt = () -> Gurobi.Optimizer(GRB_ENV))
 generate_annotation(model, Calliope())
 
-modify(model, Solver.AlgorithmIPM(model = :main))
+# @profview generate_annotation(model, Calliope())
+# @b generate_annotation(model, Calliope())
+
 # TODO: it seems like solving sub models with IPM + crossover does not allow extracting dual rays...?
 
-# modify(model, Solver.AlgorithmIPM(model = :sub))
-modify(model, Solver.ExtractDualRay(model = :sub))
+# TODO: writing
+# - highs column vs. row major
+# - gurobi: dual vs. primal objective
+# - extracting dual rays from crossover solves
+# - predual resulting in different "qualities" for dual results
+# - remove redundant / stabilize numerical range hurting HiGHS vs. Gurobi
+# - feasibility cuts working
+# - "optimal" status even if not optimal
+# - quadratic regularization forcing IPM vs. LPs
+# - graph based decomposition identifies a lot more sub-problems (can be good or bad - further outlook)
 
-modify(model, Benders.Main.FeasibilityCutTypeMulti())
-modify(model, Benders.Main.OptimalityCutTypeMulti())
+# TODO: find actually citable ressources
 
-modify(model, Benders.Main.ObjectiveDefault())
-modify(model, Benders.Sub.ObjectiveSelf())
+# doi: 10.1109/TPWRS.2019.2892607
+# doi: 10.1007/s11081-017-9369-y
 
-modify(model, Benders.Main.VirtualSoftBounds(0.0, 1e6))
+
+modify.(model, [
+    Solver.AlgorithmIPM(model = :main),
+    Solver.ExtractDualRay(model = :sub),
+
+    Benders.Main.FeasibilityCutTypeMulti(),
+    Benders.Main.OptimalityCutTypeMulti(),
+
+    Benders.Main.ObjectiveDefault(),
+    Benders.Sub.ObjectiveSelf(),
+
+    Benders.Main.VirtualSoftBounds(0.0, 1e6),
+    Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1),
+
+    # These two may help HiGHS, but may (considerably) hurt Gurobi
+    # Benders.CutPreprocessingRemoveRedundant(),
+    # Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4),
+
+    Benders.Termination.Stop(opt_gap_rel = 1e-2),
+]);
 
 # modify(model, Benders.Sub.RelaxationLinked(-1, 1e6))
-
-modify(model, Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1))
-
-modify(model, Benders.Termination.Stop(opt_gap_rel = 1e-2))
 
 # JuMP.set_attribute(main(model), "ipm_optimality_tolerance", 1e-1)
 # JuMP.set_attribute(main(model), "dual_feasibility_tolerance", 1e-3)
@@ -63,13 +96,9 @@ modify(model, Benders.Termination.Stop(opt_gap_rel = 1e-2))
 #     JuMP.set_attribute(m, "dual_feasibility_tolerance", 1e-3)   # lower seems better
 # end
 
-# These two may help HiGHS, but may (considerably) hurt Gurobi
-modify(model, Benders.CutPreprocessingRemoveRedundant())
-modify(model, Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4))  # this may even hurt without `CutPreprocessingRemoveRedundant`, but together with it it helps (a lot)
-
 finalize!(model)
 
-while !iterate!(model); end
+while !iterate!(model; nthreads = -1); end
 
 summarize_timings(model)
 
