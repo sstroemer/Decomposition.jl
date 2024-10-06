@@ -2,6 +2,22 @@
     # TODO: these could keep version, specific necessary information, etc.
 end
 
+function _rows_with_entries(smcsc::SparseArrays.SparseMatrixCSC{Tv,Ti}, cols::AbstractVector{Ti}) where {Tv,Ti}
+    nrows = size(smcsc, 1)
+    row_has_one = falses(nrows)
+
+    colptr = smcsc.colptr
+    rowval = smcsc.rowval
+
+    @inbounds @simd for j in cols
+        idx_start = colptr[j]
+        idx_end = colptr[j + 1] - 1
+        row_has_one[rowval[idx_start:idx_end]] .= true
+    end
+
+    return findall(row_has_one)
+end
+
 function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     # TODO: make sure / check / warn on MILP models, since this, e.g., matches "available_flow_cap", which is not a design variable
     _split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
@@ -30,6 +46,24 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     nzA = model.lpmd.A .!= 0
     posA = model.lpmd.A .> 0
     negA = model.lpmd.A .< 0
+
+    # Prepare `single_var_con` for cache (will be converted to bounds).
+    _srv = sort(model.lpmd.A.rowval)
+    _single_var_con = Set{Int64}(
+        _srv[i] for i in 2:(length(_srv) - 1)
+        if (_srv[i] != _srv[i-1]) && (_srv[i] != _srv[i+1])
+    )
+    # Manually check the last constraint.
+    if _srv[end] != _srv[end-1]
+        push!(_single_var_con, _srv[end])
+    end
+
+    # Prepare information that is used in `model_from_lp`, to allow caching it.
+    cache_model_from_lp = Dict(
+        :nzA => nzA,
+        :fnzc => nzA * collect(1:size(nzA, 2)),
+        :single_var_con => _single_var_con,
+    )
 
     # For each temporal linking constraint, find the corresponding variable indices, already split into blocks.
     vis_per_ntlc = Dict()
@@ -70,7 +104,7 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     cis_main = findall((sum(nzA[:, [i for i in axes(model.lpmd.A, 2) if !(i in set_vis_main)]]; dims=2)[:, 1]) .== 0)
 
     # Construct the main-model.
-    m_main = Benders.model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main())
+    m_main = Benders.model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main(), cache=cache_model_from_lp)
     push!(model.models, m_main)
     push!(model.vis, vis_main)       
     push!(model.cis, cis_main)
@@ -80,13 +114,21 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     g = Graphs.SimpleGraph(adj_matrix)
     cc = Graphs.connected_components(g)
 
+    # We need row-wise access a lot of times later on, so transpose once, and reuse.
+    # This is a big gain in performance. Copying is necessary, since `transpose` is lazy.
+    nzAt = copy(nzA')
+
     # Create sub-model for each connected component.
     for component in cc
         if (length(component) > 1) || !(component[1] in set_vis_main)
-            cis_in_component = findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])
-            vis_in_component = findall((sum(nzA[cis_in_component, :]; dims=1) .!= 0)[1, :])
+            # These are the commands that we want to run, but substitute the transposed version AND use a specialized "find" function:
+            #       `findall((sum(nzA[:, component]; dims=2) .!= 0)[:, 1])`
+            #       `findall((sum(nzA[cis_in_component, :]; dims=1) .!= 0)[1, :])`
+            # This results in around 100-500x speedup, depending on the size of the problem.
+            cis_in_component = _rows_with_entries(nzA, component)
+            vis_in_component = _rows_with_entries(nzAt, cis_in_component)
             
-            m_sub = Benders.model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub())
+            m_sub = Benders.model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)
     
             push!(model.models, m_sub)
             push!(model.vis, vis_in_component)       

@@ -3,6 +3,7 @@ module Benders
 import JuMP
 import OrderedCollections: OrderedDict
 
+import ..Decomposition.LinearAlgebra: mat_vec_scalar
 import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel, TimerOutput
 import ..Decomposition.AbstractCut as Decomposition_AbtractCut
 

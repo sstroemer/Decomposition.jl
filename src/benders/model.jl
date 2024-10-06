@@ -61,12 +61,16 @@ DecomposedModel = DecomposedModel5
 Base.Broadcast.broadcastable(model::DecomposedModel) = Ref(model)
 Base.show(io::IO, model::DecomposedModel) = print(io, "DecomposedModel [algorithm=Benders]: $(model.name)")
 
-function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer)
+function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer, cache::Dict{Symbol, Any})
+    # TODO: pull "debug", "verbosity", and other settings from the list of (MOI.RawOptimizationAttribute) attributes that were added to the model
+    debug = false
+
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
 
     model = JuMP.direct_model(optimizer)
     # model = Model(() -> optimizer)
     JuMP.set_silent(model)
+    JuMP.set_string_names_on_creation(model, debug)
 
     # Create variables, and set bounds.
     JuMP.@variable(model, x[i = idx_v])
@@ -75,25 +79,14 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
         isfinite(lpmd.x_upper[i]) && JuMP.set_upper_bound(x[i], lpmd.x_upper[i])
     end
 
-    single_var_con = Set{Int64}()
-    srv = sort(lpmd.A.rowval)
-    for i in 3:length(srv)
-        srv[i] == srv[i-1] && continue
-        srv[i-1] == srv[i-2] &&  continue
-        push!(single_var_con, srv[i-1])      
-    end
-
-    nzA = lpmd.A .!= 0
-    fnzc = nzA * collect(1:size(nzA, 2))
-
     # Create constraints.
     add_ge = Vector{Int64}()
     add_lt = Vector{Int64}()
     add_eq = Vector{Int64}()
     for i in idx_c
         # Check for "single variable constraints", which can be transformed into bounds.
-        if i in single_var_con
-            _idx = fnzc[i]
+        if i in cache[:single_var_con]
+            _idx = cache[:fnzc][i]
             c = lpmd.A[i, _idx]
             
             if isfinite(lpmd.b_lower[i])
@@ -123,9 +116,34 @@ function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vec
         isfinite(lpmd.b_upper[i]) && push!(add_lt, i)
     end
 
-    JuMP.@constraint(model, lpmd.A[add_eq, idx_v] * x.data .== lpmd.b_lower[add_eq])
-    JuMP.@constraint(model, lpmd.A[add_ge, idx_v] * x.data .>= lpmd.b_lower[add_ge])
-    JuMP.@constraint(model, lpmd.A[add_lt, idx_v] * x.data .<= lpmd.b_upper[add_lt])
+    # Instead of:
+    # ```julia
+    # JuMP.@constraint(model, (@view lpmd.A[add_eq, idx_v]) * x.data .== lpmd.b_lower[add_eq])
+    # JuMP.@constraint(model, (@view lpmd.A[add_ge, idx_v]) * x.data .>= lpmd.b_lower[add_ge])
+    # JuMP.@constraint(model, (@view lpmd.A[add_lt, idx_v]) * x.data .<= lpmd.b_upper[add_lt])
+    # ```
+    #
+    # we optimize to:
+    # ```julia
+    # x_data_t = collect(x.data')
+    # A_t = copy(lpmd.A[:, idx_v]')
+    # 
+    # isempty(add_eq) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, add_eq], 1.0)' .== lpmd.b_lower[add_eq])
+    # isempty(add_ge) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, add_ge], 1.0)' .>= lpmd.b_lower[add_ge])
+    # isempty(add_lt) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, add_lt], 1.0)' .<= lpmd.b_upper[add_lt])
+    # ```
+    # which again can be optimized by only transpose-copying once:
+
+    x_data_t = collect(x.data')
+    A_t = copy(lpmd.A[vcat(add_eq, add_ge, add_lt), idx_v]')  # TODO: this line takes > 50% of the total time
+    
+    idx_eq = 1:length(add_eq)
+    idx_ge = length(add_eq)+1:length(add_eq)+length(add_ge)
+    idx_lt = length(add_eq)+length(add_ge)+1:length(add_eq)+length(add_ge)+length(add_lt)   
+
+    isempty(add_eq) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, idx_eq], 1.0)' .== lpmd.b_lower[add_eq])
+    isempty(add_ge) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, idx_ge], 1.0)' .>= lpmd.b_lower[add_ge])
+    isempty(add_lt) || JuMP.@constraint(model, mat_vec_scalar(x_data_t, A_t[:, idx_lt], 1.0)' .<= lpmd.b_upper[add_lt])
 
     # Add default processes.
     model.ext[:processes] = Dict(
