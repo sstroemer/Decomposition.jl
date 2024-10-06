@@ -11,10 +11,17 @@ import SHA
 import Printf
 using TimerOutputs
 
+const MOI = JuMP.MOI
+
 abstract type AbstractDecompositionAttribute end
 abstract type AbstractDecompositionQuery end
 abstract type AbstractDecomposedModel end
 abstract type AbstractCut end
+
+# TODO: move all of this into a MOIWrapper, examples:
+# - https://github.com/ds4dm/Tulip.jl/tree/master/src/Interfaces/MOI
+# - https://github.com/atoptima/Coluna.jl/blob/master/src/MOIwrapper.jl
+
 
 function add_attribute!(model::AbstractDecomposedModel, attribute::AbstractDecompositionAttribute)
     push!(model.attributes, attribute)
