@@ -34,7 +34,7 @@ function _modify_jump(jump_model::JuMP.Model, attribute::AbstractAttribute)
     solver = JuMP.solver_name(jump_model)
     
     if !haskey(solver_functions, solver)
-        @error "Solver `$(solver)` is currently not supported"
+        @error "Solver is currently not supported for this attribute" solver attribute
     elseif !solver_functions[solver](jump_model, attribute)
         @error "Cannot set solver attribute" solver attribute
     end
