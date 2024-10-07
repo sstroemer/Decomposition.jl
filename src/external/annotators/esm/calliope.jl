@@ -46,9 +46,9 @@ function _generate_annotations(model::Benders.DecomposedModel, annotator::Callio
     con_names = JuMP.name.(model.lpmd.affine_constraints)
 
     # Prepare positive / negative entries of A.
-    nzA = Benders.cache_get(model, :nzA)
-    posA = Benders.cache_get(model, :posA)
-    negA = Benders.cache_get(model, :negA)
+    nzA = cache_get(model, :nzA)
+    posA = cache_get(model, :posA)
+    negA = cache_get(model, :negA)
 
     # For each temporal linking constraint, find the corresponding variable indices, already split into blocks.
     vis_per_ntlc = Dict()

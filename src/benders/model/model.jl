@@ -1,17 +1,30 @@
 include("cache.jl")
-include("conversion/conversion.jl")
 
-main(model::Benders.DecomposedModel) = model.models[1]
-sub(model::Benders.DecomposedModel; index::Int) = model.models[1 + index]
-subs(model::Benders.DecomposedModel) = model.models[2:end]
+Base.Broadcast.broadcastable(model::Benders.DecomposedModel) = Ref(model)
 
-Base.Broadcast.broadcastable(model::DecomposedModel) = Ref(model)
+# Dualization is just flagged, and never directly applied as separate step.
+apply!(model::Benders.DecomposedModel, attribute::Solver.DualizeModel) = true
+
+# ... same for these.
+apply!(model::Benders.DecomposedModel, attribute::Benders.Config.ModelDebug) = true
+apply!(model::Benders.DecomposedModel, attribute::Benders.Config.ModelDirectMode) = true
+
+function apply!(model::Benders.DecomposedModel, attribute::Solver.AbstractAttribute)
+    models = attribute.model == :main ? [Benders.main(model)] : Benders.subs(model)
+    
+    ret = true
+    for m in models
+        ret &= Solver._modify_jump(m, attribute)
+    end
+    
+    return ret
+end
 
 function finalize!(model::Benders.DecomposedModel)
     # Construct & apply all annotations if this is called for the first time.
     if isempty(model.models)
         @timeit model.timer "annotations (generate)" annotate!(model)
-        @timeit model.timer "annotations (apply)" _apply_annotations!(model)
+        @timeit model.timer "annotations (apply)" apply_annotations!(model)
     end
 
     # Apply all attributes, that are flagged as dirty.

@@ -1,4 +1,4 @@
-function _apply_annotations!(model::DecomposedModel)
+function apply_annotations!(model::Benders.DecomposedModel)
     @info "Begin applying annotations; building models"
     # TODO: identify "trivial" sub-models here, and "remove" them
 
@@ -9,7 +9,7 @@ function _apply_annotations!(model::DecomposedModel)
     push!(model.cis, cis_main)
 
     # Create & save main-model.
-    push!(model.models, lpmd_to_jump(model, vis_main, cis_main; name="main", optimizer=model.f_opt_main()))
+    push!(model.models, Benders.lpmd_to_jump(model, vis_main, cis_main; name="main", optimizer=model.f_opt_main()))
 
     # TODO / NOTE for WRITING:
     # Grouping sub-models does not really work without extracting distinct cuts afterwards. It may be seen as a different take on "single-cut" (instead of multicut).
@@ -22,13 +22,13 @@ function _apply_annotations!(model::DecomposedModel)
     vis_sub = Vector{Int64}[]
     cis_sub = Vector{Int64}[]
 
-    if !has_attribute_type(model, Sub.PreGroupModels)
+    if !has_attribute_type(model, Benders.Sub.PreGroupModels)
         for i in 1:n_sub_models
             push!(vis_sub, model.annotations[:variables][Symbol("sub_$i")])
             push!(cis_sub, model.annotations[:constraints][Symbol("sub_$i")])
         end
     else
-        cfg_nof_groups = get_attribute(model, Sub.PreGroupModels, :nof_groups)
+        cfg_nof_groups = get_attribute(model, Benders.Sub.PreGroupModels, :nof_groups)
 
         # Estimate problem "size / complexity" for each sub-model.
         problem_size = [
@@ -84,7 +84,7 @@ function _apply_annotations!(model::DecomposedModel)
         push!(model.cis, cis_sub[i])
 
         # Create & save sub-model.
-        push!(model.models, lpmd_to_jump(model, vis_sub[i], cis_sub[i]; name="sub_$i", optimizer=model.f_opt_sub()))
+        push!(model.models, Benders.lpmd_to_jump(model, vis_sub[i], cis_sub[i]; name="sub_$i", optimizer=model.f_opt_sub()))
     end
 
     # Create empty results dictionary.
@@ -94,5 +94,5 @@ function _apply_annotations!(model::DecomposedModel)
     )
 
     @info "Annotations successfully applied" n_main_models = 1 n_sub_models = length(vis_sub)
-    return nothing
+    return true
 end

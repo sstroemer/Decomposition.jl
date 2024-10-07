@@ -4,9 +4,40 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
     cfg_direct_mode = get_attribute(model, Config.ModelDirectMode, :enable)
     cfg_debug = get_attribute(model, Config.ModelDebug, :enable)
 
+    # Check if the model should be solved using a dual optimizer.
+    dualize = false
+    if startswith(name, "main")
+        for attr in get_attributes(model, _ExtModSolver.DualizeModel)
+            (attr.activate && attr.model == :main) || continue
+            dualize = true
+        end
+    elseif startswith(name, "sub")
+        for attr in get_attributes(model, _ExtModSolver.DualizeModel)
+            (attr.activate && attr.model == :sub) || continue
+            dualize = true
+        end
+    else
+        @error "Unexpected model name" name
+    end
+    # TODO: we can use this name check above to stop requiring the "optimizer" argument, pulling it automatically
+
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
 
-    jump_model = cfg_direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer)
+    jump_model = (
+        if dualize
+            # f_opt_dual = Dualization.dual_optimizer(() -> optimizer)
+            # cfg_direct_mode ? JuMP.direct_model(f_opt_dual()) : JuMP.Model(f_opt_dual)
+
+            # TODO: Is there a way to support dualization with direct models?
+            if cfg_direct_mode
+                @warn "Direct mode is not supported for dualized models, ignoring it" maxlog = 1
+            end
+
+            JuMP.Model(Dualization.dual_optimizer(() -> optimizer))
+        else
+            cfg_direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer)
+        end
+    )
     
     JuMP.set_silent(jump_model)
     JuMP.set_string_names_on_creation(jump_model, cfg_debug)

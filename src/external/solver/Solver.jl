@@ -2,7 +2,7 @@ module Solver
 
 import JuMP
 
-import ..Decomposition: AbstractDecompositionAttribute
+import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel
 
 abstract type AbstractAttribute <: AbstractDecompositionAttribute end
 
@@ -32,6 +32,9 @@ function _modify_jump(jump_model::JuMP.Model, attribute::AbstractAttribute)
     )
 
     solver = JuMP.solver_name(jump_model)
+    if startswith(solver, "Dual model with")
+        solver = solver[17:(end-9)]
+    end
     
     if !haskey(solver_functions, solver)
         @error "Solver is currently not supported for this attribute" solver attribute
@@ -43,6 +46,8 @@ function _modify_jump(jump_model::JuMP.Model, attribute::AbstractAttribute)
 
     return true
 end
+
+include("dualization.jl")
 
 end
 

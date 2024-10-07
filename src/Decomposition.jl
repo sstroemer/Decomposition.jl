@@ -133,6 +133,14 @@ function execute!(model::AbstractDecomposedModel, query::AbstractDecompositionQu
     return false
 end
 
+function cache_get(model::AbstractDecomposedModel, entry::Symbol)
+    if !haskey(model._cache, entry)
+        model._cache[entry] = getfield(@__MODULE__, Symbol("_cache_build_", entry))(model)    
+    end
+    
+    return model._cache[entry]
+end
+
 include("util/util.jl")
 include("external/solver/Solver.jl")
 include("external/annotators/general.jl")

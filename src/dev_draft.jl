@@ -24,7 +24,7 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 2184
+T = 744
 n = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
@@ -43,16 +43,19 @@ jump_model = jump_model_from_file("national_scale_$T.mps")
 model = Benders.DecomposedModel(;
     jump_model,
     annotator = Calliope(),
-    f_opt_main = () -> HiGHS.Optimizer(),
-    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV)
+    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV),
+    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),
 )
 
 Decomposition.set_attribute.(model, [
+    Benders.Config.ModelDirectMode(enable=false),
+
     Benders.Config.TotalTimesteps(T),
     Benders.Config.NumberOfTemporalBlocks(n),
 
     Solver.AlgorithmIPM(model = :main),
     Solver.ExtractDualRay(model = :sub),
+    # Solver.DualizeModel(model = :sub),     # TODO: seems to be not passing any starting values, so super slow, consider "manually" formulating the dual instead of using the dual optimizer
 
     Benders.FeasibilityCutTypeMulti(),
     Benders.OptimalityCutTypeMulti(),
@@ -110,7 +113,7 @@ Decomposition.set_attribute.(model, [
 #     JuMP.set_attribute(m, "dual_feasibility_tolerance", 1e-3)   # lower seems better
 # end
 
-Benders.finalize!(model)
+finalize!(model)
 
 while !iterate!(model; nthreads = -1); end
 

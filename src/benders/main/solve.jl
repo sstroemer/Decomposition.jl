@@ -3,6 +3,13 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
 
     if has_attribute_type(model, Benders.Main.RegularizationLevelSet)
         ub = best_upper_bound(model)
+
+        # TODO: make that an attribute
+        # TODO / WRITING: this helps especially with HiGHS, and when solving the dualized subs, but also when solving the normal/primal one; it also slightly helps Gurobi for both cases
+        if !isfinite(ub)
+            ub = 1e14
+        end
+
         if !isfinite(ub)
             # We have no valid upper bound, so nothing we can do right now.
             JuMP.optimize!(jm)

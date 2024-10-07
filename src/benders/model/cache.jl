@@ -22,11 +22,3 @@ function _cache_build_fnzc(model::Benders.DecomposedModel)
     nzA = cache_get(model, :nzA)
     return nzA * collect(1:size(nzA, 2))
 end
-
-function cache_get(model::Benders.DecomposedModel, entry::Symbol)
-    if !haskey(model._cache, entry)
-        model._cache[entry] = getfield(@__MODULE__, Symbol("_cache_build_", entry))(model)    
-    end
-    
-    return model._cache[entry]
-end

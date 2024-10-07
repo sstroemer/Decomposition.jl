@@ -1,6 +1,6 @@
-@kwdef struct DecomposedModel9 <: _DecompositionMainModule.AbstractDecomposedModel
+@kwdef struct DecomposedModel9 <: _ExtModDecomposition.AbstractDecomposedModel
     jump_model::JuMP.Model
-    annotator::_DecompositionMainModule.AbstractGeneralAnnotator
+    annotator::_ExtModDecomposition.AbstractGeneralAnnotator
 
     name::String = JuMP.name(jump_model)
 
@@ -27,7 +27,7 @@
     )
 
     # This allows for more than just `Benders.AbstractGeneralAttribute`, to allow (e.g.) `Solver.AbstractAttribute`.
-    attributes::Vector{_DecompositionMainModule.DecompositionAttributeContainer} = _DecompositionMainModule.DecompositionAttributeContainer[]
+    attributes::Vector{_ExtModDecomposition.DecompositionAttributeContainer} = _ExtModDecomposition.DecompositionAttributeContainer[]
 
     solutions = Dict{Symbol, Any}(
         :current => Dict{Symbol, Any}(
