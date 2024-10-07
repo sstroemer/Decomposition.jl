@@ -137,7 +137,7 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
 
     # TODO: the following is a good example of why this "calliope" function should only figure out the annotation and not do the actual decomposition
 
-    group_sub_models = 35  # TODO: make this a parameter
+    group_sub_models = false  # TODO: make this a parameter
 
     # TODO / NOTE for WRITING:
     # Grouping sub-models does not really work without extracting distinct cuts afterwards. It may be seen as a different take on "single-cut" (instead of multicut).
@@ -158,7 +158,7 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
 
         N = (
             if group_sub_models > 0
-                group_sub_models
+                min(length(interim_vis), group_sub_models)
             else
                 # Estimate N, by trying to create "balanced" group sizes.
                 est = problem_size[sorted_indices[1:2]]
