@@ -119,6 +119,8 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     nzAt = copy(nzA')
 
     # Create sub-model for each connected component.
+    interim_vis = Vector{Int64}[]
+    interim_cis = Vector{Int64}[]
     for component in cc
         if (length(component) > 1) || !(component[1] in set_vis_main)
             # These are the commands that we want to run, but substitute the transposed version AND use a specialized "find" function:
@@ -128,11 +130,67 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
             cis_in_component = _rows_with_entries(nzA, component)
             vis_in_component = _rows_with_entries(nzAt, cis_in_component)
             
-            m_sub = Benders.model_from_lp(model.lpmd, vis_in_component, cis_in_component; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)
+            push!(interim_vis, vis_in_component)       
+            push!(interim_cis, cis_in_component)
+        end
+    end
+
+    # TODO: the following is a good example of why this "calliope" function should only figure out the annotation and not do the actual decomposition
+
+    group_sub_models = 35  # TODO: make this a parameter
+
+    # TODO / NOTE for WRITING:
+    # Grouping sub-models does not really work without extracting distinct cuts afterwards. It may be seen as a different take on "single-cut" (instead of multicut).
+    # It potentially "hides" the effect of Y on sub-model S1, because S2 "dominates" the necessary decision. A work around would be to create the merged model with
+    # duplicate variable copies: Instead of doing "unique", the variable "x_15111" should be created for both S1 and S2, their objective functions should just be added
+    # together, and then the cuts can be separated as post-processing. This would allow to see the effect of Y on S1 and S2 separately, but still have the "grouped" effect.
+
+    if group_sub_models === false
+        for (vis, cis) in zip(interim_vis, interim_cis)
+            m_sub = Benders.model_from_lp(model.lpmd, vis, cis; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)  
+            push!(model.models, m_sub)
+            push!(model.vis, vis)       
+            push!(model.cis, cis)
+        end
+    else
+        problem_size = [sqrt(length(vis)^2 + length(cis)^2) for (vis, cis) in zip(interim_vis, interim_cis)]  # TODO: better approximate that via nnz(A)?
+        sorted_indices = sortperm(problem_size, rev=true)
+
+        N = (
+            if group_sub_models > 0
+                group_sub_models
+            else
+                # Estimate N, by trying to create "balanced" group sizes.
+                est = problem_size[sorted_indices[1:2]]
+                for i in sorted_indices[3:end]
+                    if (problem_size[i] + est[end]) <= est[end - 1]
+                        est[end] += problem_size[i]
+                    else
+                        push!(est, problem_size[i])
+                    end
+                end
+                length(est)
+            end
+        )
+
+        groups = [Int[] for _ in 1:N]
+        group_size = zeros(Float64, N)
+    
+        for idx in sorted_indices
+            smallest_group = argmin(group_size)
+            push!(groups[smallest_group], idx)
+            group_size[smallest_group] += problem_size[idx]
+        end
+    
+        for group in groups
+            vis = unique([vi for g in group for vi in interim_vis[g]])
+            cis = unique([ci for g in group for ci in interim_cis[g]])
+    
+            m_sub = Benders.model_from_lp(model.lpmd, vis, cis; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)
     
             push!(model.models, m_sub)
-            push!(model.vis, vis_in_component)       
-            push!(model.cis, cis_in_component)
+            push!(model.vis, vis)       
+            push!(model.cis, cis)
         end
     end
 
