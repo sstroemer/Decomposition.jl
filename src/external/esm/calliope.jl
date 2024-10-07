@@ -18,9 +18,12 @@ function _rows_with_entries(smcsc::SparseArrays.SparseMatrixCSC{Tv,Ti}, cols::Ab
     return findall(row_has_one)
 end
 
-function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
+function _generate_annotations(model::Benders.DecomposedModel, ext_fw::Calliope)
     # TODO: make sure / check / warn on MILP models, since this, e.g., matches "available_flow_cap", which is not a design variable
     _split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
+
+    T = get_attribute(model, Benders.Config.TotalTimesteps, :T)
+    nof_temporal_blocks = get_attribute(model, Benders.Config.NumberOfTemporalBlocks, :n)
 
     # Design variables are: flow_cap, link_flow_cap, source_cap, storage_cap, area_use
     #                       "cap" matches all cap-related of them
@@ -43,27 +46,9 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     con_names = JuMP.name.(model.lpmd.affine_constraints)
 
     # Prepare positive / negative entries of A.
-    nzA = model.lpmd.A .!= 0
-    posA = model.lpmd.A .> 0
-    negA = model.lpmd.A .< 0
-
-    # Prepare `single_var_con` for cache (will be converted to bounds).
-    _srv = sort(model.lpmd.A.rowval)
-    _single_var_con = Set{Int64}(
-        _srv[i] for i in 2:(length(_srv) - 1)
-        if (_srv[i] != _srv[i-1]) && (_srv[i] != _srv[i+1])
-    )
-    # Manually check the last constraint.
-    if _srv[end] != _srv[end-1]
-        push!(_single_var_con, _srv[end])
-    end
-
-    # Prepare information that is used in `model_from_lp`, to allow caching it.
-    cache_model_from_lp = Dict(
-        :nzA => nzA,
-        :fnzc => nzA * collect(1:size(nzA, 2)),
-        :single_var_con => _single_var_con,
-    )
+    nzA = Benders.cache_get(model, :nzA)
+    posA = Benders.cache_get(model, :posA)
+    negA = Benders.cache_get(model, :negA)
 
     # For each temporal linking constraint, find the corresponding variable indices, already split into blocks.
     vis_per_ntlc = Dict()
@@ -72,18 +57,21 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
         vis = findall(((sum(negA[cis, :]; dims=1) .== 1) .& (sum(posA[cis, :]; dims=1) .== 1))[1, :])
 
         if ntlc in ["balance_supply_with_storage", "balance_storage"]
-            vis_per_ntlc[ntlc] = _split_vec(vis, model.T)
+            vis_per_ntlc[ntlc] = _split_vec(vis, T)
         elseif ntlc in ["ramping_up", "ramping_down"]
-            vis_per_ntlc[ntlc] = vcat.(nothing, _split_vec(vis, model.T - 2), nothing)
+            vis_per_ntlc[ntlc] = vcat.(nothing, _split_vec(vis, T - 2), nothing)
         end
     end
 
     # TODO: the code above/below can be merged and made more efficient
-    len_of_t_split = model.T ÷ model.nof_temporal_splits
+    len_of_t_split = T ÷ nof_temporal_blocks
+    if len_of_t_split * nof_temporal_blocks != T
+        @error "The number of temporal splits does not divide the number of timesteps evenly" nof_temporal_blocks
+    end
 
     # Get all variables at the begin/end of each temporal block.
     vis_temporal = Int64[]
-    for s in 1:model.nof_temporal_splits
+    for s in 1:nof_temporal_blocks
         t_from = 1 + (s-1) * len_of_t_split
         t_to = s * len_of_t_split
     
@@ -96,18 +84,21 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     end
 
     # These variables will be present in main and should therefore NOT be included in the graph.
-    set_vis_main = Set(vis_design)
-    union!(set_vis_main, vis_temporal)
-    vis_main = sort(collect(set_vis_main))
+    set_vis_design = Set(vis_design)
+    set_vis_temporal = Set(vis_temporal)
+    set_vis_main = union(set_vis_design, set_vis_temporal)
+    vis_design = sort(collect(set_vis_design))
+    vis_temporal = sort(collect(set_vis_temporal))
+    # vis_main = sort(collect(set_vis_main))
 
     # Get all constraints that do NOT contain variables that are not in the main-model.
+    # TODO: make use of `_rows_with_entries` here as well
     cis_main = findall((sum(nzA[:, [i for i in axes(model.lpmd.A, 2) if !(i in set_vis_main)]]; dims=2)[:, 1]) .== 0)
 
-    # Construct the main-model.
-    m_main = Benders.model_from_lp(model.lpmd, vis_main, cis_main; optimizer=model.f_opt_main(), cache=cache_model_from_lp)
-    push!(model.models, m_main)
-    push!(model.vis, vis_main)       
-    push!(model.cis, cis_main)
+    # Annotate all main variables/constraints.
+    model.annotations[:variables][:main_design] = vis_design
+    model.annotations[:variables][:main_temporal] = vis_temporal
+    model.annotations[:constraints][:main] = cis_main
 
     # Create a graph from the problem.
     adj_matrix = create_adjacency_matrix(model.lpmd.A, set_vis_main)
@@ -118,9 +109,8 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
     # This is a big gain in performance. Copying is necessary, since `transpose` is lazy.
     nzAt = copy(nzA')
 
-    # Create sub-model for each connected component.
-    interim_vis = Vector{Int64}[]
-    interim_cis = Vector{Int64}[]
+    # Create sub-model annotations for each connected component.
+    n_sub_models = 0
     for component in cc
         if (length(component) > 1) || !(component[1] in set_vis_main)
             # These are the commands that we want to run, but substitute the transposed version AND use a specialized "find" function:
@@ -129,72 +119,13 @@ function generate_annotation(model::Benders.DecomposedModel, ext_fw::Calliope)
             # This results in around 100-500x speedup, depending on the size of the problem.
             cis_in_component = _rows_with_entries(nzA, component)
             vis_in_component = _rows_with_entries(nzAt, cis_in_component)
-            
-            push!(interim_vis, vis_in_component)       
-            push!(interim_cis, cis_in_component)
+
+            n_sub_models += 1
+            model.annotations[:variables][Symbol("sub_$n_sub_models")] = vis_in_component
+            model.annotations[:constraints][Symbol("sub_$n_sub_models")] = cis_in_component
         end
     end
 
-    # TODO: the following is a good example of why this "calliope" function should only figure out the annotation and not do the actual decomposition
-
-    group_sub_models = false  # TODO: make this a parameter
-
-    # TODO / NOTE for WRITING:
-    # Grouping sub-models does not really work without extracting distinct cuts afterwards. It may be seen as a different take on "single-cut" (instead of multicut).
-    # It potentially "hides" the effect of Y on sub-model S1, because S2 "dominates" the necessary decision. A work around would be to create the merged model with
-    # duplicate variable copies: Instead of doing "unique", the variable "x_15111" should be created for both S1 and S2, their objective functions should just be added
-    # together, and then the cuts can be separated as post-processing. This would allow to see the effect of Y on S1 and S2 separately, but still have the "grouped" effect.
-
-    if group_sub_models === false
-        for (vis, cis) in zip(interim_vis, interim_cis)
-            m_sub = Benders.model_from_lp(model.lpmd, vis, cis; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)  
-            push!(model.models, m_sub)
-            push!(model.vis, vis)       
-            push!(model.cis, cis)
-        end
-    else
-        problem_size = [sqrt(length(vis)^2 + length(cis)^2) for (vis, cis) in zip(interim_vis, interim_cis)]  # TODO: better approximate that via nnz(A)?
-        sorted_indices = sortperm(problem_size, rev=true)
-
-        N = (
-            if group_sub_models > 0
-                min(length(interim_vis), group_sub_models)
-            else
-                # Estimate N, by trying to create "balanced" group sizes.
-                est = problem_size[sorted_indices[1:2]]
-                for i in sorted_indices[3:end]
-                    if (problem_size[i] + est[end]) <= est[end - 1]
-                        est[end] += problem_size[i]
-                    else
-                        push!(est, problem_size[i])
-                    end
-                end
-                length(est)
-            end
-        )
-
-        groups = [Int[] for _ in 1:N]
-        group_size = zeros(Float64, N)
-    
-        for idx in sorted_indices
-            smallest_group = argmin(group_size)
-            push!(groups[smallest_group], idx)
-            group_size[smallest_group] += problem_size[idx]
-        end
-    
-        for group in groups
-            vis = unique([vi for g in group for vi in interim_vis[g]])
-            cis = unique([ci for g in group for ci in interim_cis[g]])
-    
-            m_sub = Benders.model_from_lp(model.lpmd, vis, cis; optimizer=model.f_opt_sub(), cache=cache_model_from_lp)
-    
-            push!(model.models, m_sub)
-            push!(model.vis, vis)       
-            push!(model.cis, cis)
-        end
-    end
-
-    @info "Created decomposed models" n_sub = (length(model.models) - 1)
-
+    @info "Model annotation successful" n_sub_models
     return nothing
 end

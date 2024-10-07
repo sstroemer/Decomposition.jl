@@ -6,13 +6,9 @@ get_sub_time(model::Benders.DecomposedModel; index::Int) = TimerOutputs.time(mod
 
 function summarize_timings(model::Benders.DecomposedModel)
     to = TimerOutputs.TimerOutput()
-
     to.inner_timers["main"] = model.timer["main"]
-
     to.inner_timers["sub"] = TimerOutputs.merge(values(model.timer["sub"].inner_timers)...)
-    to.inner_timers["sub"].name = "sub [1 ... $(length(subs(model)))]"
-
+    to.inner_timers["sub"].name = "sub [1 ... $(length(Benders.subs(model)))]"
     # TODO: fix total values not matching up
-
     return to
 end

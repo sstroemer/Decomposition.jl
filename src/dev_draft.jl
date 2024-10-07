@@ -25,9 +25,9 @@ const GRB_ENV = Gurobi.Env()
 # T4368 => obj::1.114810594e+07
 
 T = 4368
-nof_temporal_splits = 12
+n = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
-jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
+# jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
 # Decomposition.JuMP.set_optimizer(jump_model, Gurobi.Optimizer)
 # Decomposition.JuMP.set_optimizer(jump_model, HiGHS.Optimizer)
@@ -40,8 +40,35 @@ jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 # Decomposition.JuMP.optimize!(jump_model)
 
 # Gurobi.Optimizer(GRB_ENV)   ||   HiGHS.Optimizer()
-model = Benders.DecomposedModel(; jump_model, T, nof_temporal_splits, f_opt = () -> Gurobi.Optimizer(GRB_ENV))
-generate_annotation(model, Calliope())
+model = Benders.DecomposedModel(; jump_model, f_opt_main = () -> HiGHS.Optimizer(), f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV))
+
+Decomposition.set_attribute.(model, [
+    Benders.Config.TotalTimesteps(T),
+    Benders.Config.NumberOfTemporalBlocks(n),
+
+    Solver.AlgorithmIPM(model = :main),
+    Solver.ExtractDualRay(model = :sub),
+
+    Benders.FeasibilityCutTypeMulti(),
+    Benders.OptimalityCutTypeMulti(),
+
+    # TODO: currently the cut-type constructs θ, which is needed for the objectives below
+    #       => scan for that automatically if the order is not guaranteed
+
+    Benders.Main.ObjectiveDefault(),
+    Benders.Sub.ObjectiveSelf(),
+
+    Benders.Main.VirtualSoftBounds(0.0, 1e6),
+    Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1),
+
+    # These two may help HiGHS, but may (considerably) hurt Gurobi
+    # Benders.CutPreprocessingRemoveRedundant(),
+    # Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4),
+
+    Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 500),
+]);
+
+annotate!(model, Calliope())
 
 # @profview generate_annotation(model, Calliope())
 # @b generate_annotation(model, Calliope())
@@ -59,31 +86,15 @@ generate_annotation(model, Calliope())
 # - quadratic regularization forcing IPM vs. LPs
 # - graph based decomposition identifies a lot more sub-problems (can be good or bad - further outlook)
 
+# HiGHS PDLP handles this better:
+# WARNING: PDLP claims optimality, but with num/max/sum 3 /  0.001953 /  0.002083 primal infeasibilities
+# WARNING:                         and          max/sum     4.159e-08 / 9.084e-08 complementarity violations
+# WARNING:                         so set model status to "unknown"
+
 # TODO: find actually citable ressources
 
 # doi: 10.1109/TPWRS.2019.2892607
 # doi: 10.1007/s11081-017-9369-y
-
-
-modify.(model, [
-    Solver.AlgorithmIPM(model = :main),
-    Solver.ExtractDualRay(model = :sub),
-
-    Benders.Main.FeasibilityCutTypeMulti(),
-    Benders.Main.OptimalityCutTypeMulti(),
-
-    Benders.Main.ObjectiveDefault(),
-    Benders.Sub.ObjectiveSelf(),
-
-    Benders.Main.VirtualSoftBounds(0.0, 1e6),
-    Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1),
-
-    # These two may help HiGHS, but may (considerably) hurt Gurobi
-    # Benders.CutPreprocessingRemoveRedundant(),
-    # Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4),
-
-    Benders.Termination.Stop(opt_gap_rel = 1e-2),
-]);
 
 # modify(model, Benders.Sub.RelaxationLinked(-1, 1e6))
 
@@ -96,7 +107,7 @@ modify.(model, [
 #     JuMP.set_attribute(m, "dual_feasibility_tolerance", 1e-3)   # lower seems better
 # end
 
-finalize!(model)
+Benders.finalize!(model)
 
 while !iterate!(model; nthreads = -1); end
 
@@ -105,9 +116,33 @@ summarize_timings(model)
 save(model)
 # TODO: bd_query(model, BD_SubFeasibility())
 
+# unset_silent(main(model))
+# optimize!(main(model))
 
+# Some settings for COSMO:
+# set_attribute(main(model), "max_iter", 25_000)
+# set_attribute(main(model), "adaptive_rho", true)
+# set_attribute(main(model), "adaptive_rho_max_adaptions", 2)
+# set_attribute(main(model), "eps_abs", 100.0)
 
+# Some settings for HiGHS PDLP:
+# set_attribute(main(model), "solver", "pdlp")
+# set_attribute(main(model), "pdlp_iteration_limit", 10_000_000)
+# set_attribute(main(model), "pdlp_d_gap_tol", 1e-2)
+# set_attribute(main(model), "primal_feasibility_tolerance", 1e1)
+# set_attribute(main(model), "dual_feasibility_tolerance", 1e1)
 
+# Some settings for Tulip, including artificial bounds for convergence:
+# Why? Because the level-set regularization leads to troubles ...
+# set_attribute(main(model), "IPM_TolerancePFeas", 1e-4)
+# set_attribute(main(model), "IPM_ToleranceDFeas", 1e-4)
+# set_attribute(main(model), "IPM_ToleranceRGap", 1e-1)
+# set_attribute(main(model), "IPM_ToleranceIFeas", 1e-4)
+# set_attribute(main(model), "IPM_IterationsLimit", 10_000)
+# for v in all_variables(main(model))
+#     try; has_lower_bound(v) || set_lower_bound(v, -1e9); catch; end
+#     try; has_upper_bound(v) || set_upper_bound(v, 1e9); catch; end
+# end
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~++

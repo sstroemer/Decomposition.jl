@@ -4,19 +4,23 @@ import JuMP
 import OrderedCollections: OrderedDict
 
 import ..Decomposition.LinearAlgebra: mat_vec_scalar
-import ..Decomposition: AbstractDecompositionAttribute, AbstractDecomposedModel, TimerOutput
-import ..Decomposition.AbstractCut as Decomposition_AbtractCut
+import ..Decomposition: TimerOutput, @timeit
+import ..Decomposition: has_attribute_type, get_attribute, get_attributes
+import ..Decomposition: current_iteration
+import ..Decomposition: jump_objective_lb, jump_objective_ub, jump_objective_all
+import ..Decomposition: apply!, execute!
 
-include("cuts.jl")
-include("model.jl")
+import ..Decomposition as _DecompositionMainModule
 
-include("main/Main.jl")
-include("sub/Sub.jl")
-include("termination/Termination.jl")
+const MOI = JuMP.MOI
 
-import .Main
-import .Sub
-import .Termination
+abstract type AbstractGeneralAttribute <: _DecompositionMainModule.AbstractDecompositionAttribute end
+abstract type AbstractGeneralCut <: _DecompositionMainModule.AbstractCut end
+abstract type AbstractGeneralQuery <: _DecompositionMainModule.AbstractDecompositionQuery end
+
+include("_definitions/model.jl")
+include("model/model.jl")
+include("_definitions/definitions.jl")
 
 function check_cut_type(jump_model::JuMP.Model; verbose::Bool = true)
     if JuMP.is_solved_and_feasible(jump_model)
@@ -35,62 +39,21 @@ end
 
 import .Benders
 
-include("timing.jl")
-include("general.jl")
-
-function has_attribute_type(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
-    return any(attr isa type for attr in model.attributes)
-end
-
-function get_attributes(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
-    attributes = AbstractDecompositionAttribute[]
-    for attr in model.attributes
-        attr isa type && push!(attributes, attr)
-    end
-
-    if isempty(attributes)
-        @error "Model does not contain an attribute of type `$(T)`, check first with `has_attribute_type(...)`"
-    end
-
-    return attributes
-end
-
-function get_attribute(model::Benders.DecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
-    attributes = get_attributes(model, type)
-
-    if length(attributes) > 1
-        @error "Attributes of type `$(T)` not unique, use `get_attributes(...)` instead"
-        return nothing
-    end
-
-    return attributes[1]
-end
-
-function modify(model::Benders.DecomposedModel, attribute::Solver.AbstractAttribute)
-    models = attribute.model == :main ? [main(model)] : subs(model)
+function apply!(model::Benders.DecomposedModel, attribute::Solver.AbstractAttribute)
+    models = attribute.model == :main ? [Benders.main(model)] : Benders.subs(model)
+    
+    ret = true
     for m in models
-        Solver._modify_jump(m, attribute)
+        ret &= Solver._modify_jump(m, attribute)
     end
-    add_attribute!(model, attribute)
-    return nothing
+    
+    return ret
 end
 
-function modify(model::Benders.DecomposedModel, attribute::Benders.AbstractCutProcessing)
-    add_attribute!(model, attribute)
-    return nothing
-end
+include("main/main.jl")
+include("sub/sub.jl")
 
-include("main/cuts.jl")
-include("main/general.jl")
-include("main/objective.jl")
-include("main/regularization.jl")
-include("main/solve.jl")    # should this be inside Main? (Main.solve, instead of solve_main)
-include("main/extract.jl")  # should this be inside Main? (Main.extract, instead of extract_main)
+include("cuts/cuts.jl")
 
-include("sub/objective.jl")
-include("sub/relaxation.jl")
-include("sub/solve.jl")
-include("sub/extract.jl")
-
-include("termination/termination.jl")
+include("util/util.jl")
 include("iterate.jl")

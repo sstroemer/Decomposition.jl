@@ -1,10 +1,10 @@
-function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveSelf)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveSelf)
     vis_main = model.vis[1]
 
     for i in 1:(length(model.models) - 1)
         attribute.index == -1 || attribute.index == i || continue
 
-        m_sub = sub(model; index=i)
+        m_sub = Benders.sub(model; index=i)
         vis_sub = model.vis[1 + i]
     
         m_sub[:obj] = JuMP.AffExpr(0.0)
@@ -16,11 +16,10 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.Objective
         JuMP.@objective(m_sub, Min, m_sub[:obj])
     end
 
-    add_attribute!(model, attribute)
-    return nothing
+    return true
 end
 
-function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveShared)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveShared)
     # TODO: Implement this
     @error "This does not work yet (multiple subs need to correctly SHARE main-variable costs)!"
 
@@ -36,5 +35,5 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.Objective
 
     # push!(model.attributes, attribute)
 
-    return nothing
+    return false
 end

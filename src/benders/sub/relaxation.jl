@@ -1,4 +1,4 @@
-function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationAll)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationAll)
     @warn "`RelaxationAll` is currently untested ..."
 
     for i in 1:(length(model.models) - 1)
@@ -16,11 +16,10 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
     # relax_with_penalty!(bd_sub(model), Dict(linking_constraints .=> penalty))
     # merge!(attribute.penalty_map, relax_with_penalty!(m; default = attribute.penalty))
     
-    add_attribute!(model, attribute)
-    return nothing
+    return true
 end
 
-function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationLinked)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationLinked)
     vis_main = model.vis[1]
 
     for i in 1:(length(model.models) - 1)
@@ -47,11 +46,10 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
         JuMP.@objective(m_sub, Min, JuMP.objective_function(m_sub) + exp_penalty)
     end
 
-    add_attribute!(model, attribute)
-    return nothing
+    return true
 end
 
-function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationRegex)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationRegex)
     vn_main = JuMP.name.(model.lpmd.variables[model.vis[1]])
     vis_filtered_main = [vi for (vi, vn) in zip(model.vis[1], vn_main) if !isnothing(match(attribute.regex, vn))]
 
@@ -79,11 +77,10 @@ function modify(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
         JuMP.@objective(m_sub, Min, JuMP.objective_function(m_sub) + exp_penalty)
     end
 
-    add_attribute!(model, attribute)
-    return nothing
+    return true
 end
 
-function query(model::Benders.DecomposedModel, query::Benders.Sub.QueryRelaxation)
+function execute!(model::Benders.DecomposedModel, query::Benders.Query.Relaxation)
     # TODO: account for different previous ways to ensure feasibility (by checking the list of attributes/modifications)
     violation = sum(JuMP.value.(sub(model)[:z_pos])) + sum(JuMP.value.(sub(model)[:z_neg]))
     return isapprox(violation, 0.0; atol=1e-6)

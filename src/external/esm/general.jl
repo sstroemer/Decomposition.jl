@@ -1,9 +1,19 @@
 abstract type AbstractExternalESM end
 
-# TODO: this should be split into "annotate!(...)" and "build!(...)"
+function annotate!(model::AbstractDecomposedModel, ext_fw::AbstractExternalESM)
+    @info "Begin annotating model" ESM = typeof(ext_fw)
+    @timeit model.timer "annotate" _generate_annotations(model, ext_fw)
 
-function generate_annotation(model::AbstractDecomposedModel, ext_fw::AbstractExternalESM)
-    @error "Not implemented"
+    # Un-dirty all related attributes.
+    for ac in model.attributes
+        if ac.attribute isa Benders.Config.TotalTimesteps
+            ac.dirty = false
+        elseif ac.attribute isa Benders.Config.NumberOfTemporalBlocks
+            ac.dirty = false
+        end
+    end
+
+    return nothing
 end
 
 include("calliope.jl")

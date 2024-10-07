@@ -1,4 +1,4 @@
-function solve_sub(model::Benders.DecomposedModel; index::Int64)
+function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
     # TODO: Implement "on demand" feasibility cuts again
     # See: https://github.com/sstroemer/Decomposition.jl/blob/df8f334fc1dc148e54b1638d83b0240d788627df/src/dev_draft.jl#L610
     # These can then be tagged as "re-optimize"
@@ -12,18 +12,20 @@ function solve_sub(model::Benders.DecomposedModel; index::Int64)
     #     # MOI.Utilities.reset_optimizer(bd_sub(model; index=i))   # only works for non-direct mode
     # end
 
-    jump_model = sub(model; index=index)
+    # TODO: rework fixing to "==", which even helps with relaxing the main-sub-link
+
+    jm = Benders.sub(model; index=query.index)
 
     # Fix the current main-model solution in the sub-model.
     @timeit model.timer "fix variables" begin
         for vi in model.info[:results][:main][:sol].axes[1]
-            (vi in model.vis[1 + index]) || continue
-            JuMP.fix(jump_model[:x][vi], model.info[:results][:main][:sol][vi]; force=true)
+            (vi in model.vis[1 + query.index]) || continue
+            JuMP.fix(jm[:x][vi], model.info[:results][:main][:sol][vi]; force=true)
         end
     end
     
-    # Solve the sub-model.
-    @timeit model.timer "optimize" JuMP.optimize!(jump_model)
+    # Solve the sub's JuMP model.
+    @timeit model.timer "optimize" JuMP.optimize!(jm)
 
     return nothing
 end

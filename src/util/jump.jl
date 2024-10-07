@@ -1,3 +1,11 @@
+function jump_model_from_file(args...; kwargs...)
+    jump_model = JuMP.read_from_file(args...; kwargs...)
+    JuMP.set_attribute(jump_model, MOI.Name(), string(split(basename(args[1]), ".")[1]))
+    return jump_model
+end
+
+# TODO: properly rework everything below
+
 function _fast_est_dual_obj_val(jump_model::JuMP.Model)
     get_b(set::JuMP.MOI.GreaterThan) = set.lower
     get_b(set::JuMP.MOI.LessThan) = set.upper
@@ -11,7 +19,7 @@ function _fast_est_dual_obj_val(jump_model::JuMP.Model)
     return JuMP.objective_sense(jump_model) == JuMP.MAX_SENSE ? -(π' * b) : (π' * b)
 end
 
-function jump_objective_all(jump_model::JuMP.Model; require_feasibility::Bool=false)
+function jump_objective_all(jump_model::JuMP.Model; require_feasibility::Bool=true)
     require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     obj_primal = try; JuMP.objective_value(jump_model); catch; missing; end
@@ -27,7 +35,7 @@ function jump_objective_all(jump_model::JuMP.Model; require_feasibility::Bool=fa
     return (primal=obj_primal, dual=obj_dual, fval=obj_fval)
 end
 
-function jump_objective_lb(jump_model::JuMP.Model; require_feasibility::Bool=false)
+function jump_objective_lb(jump_model::JuMP.Model; require_feasibility::Bool=true)
     require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     obj_primal = try; JuMP.objective_value(jump_model); catch; +Inf; end
@@ -45,7 +53,7 @@ function jump_objective_lb(jump_model::JuMP.Model; require_feasibility::Bool=fal
     return min(obj_primal, obj_dual, obj_fval)
 end
 
-function jump_objective_ub(jump_model::JuMP.Model; require_feasibility::Bool=false)
+function jump_objective_ub(jump_model::JuMP.Model; require_feasibility::Bool=true)
     require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     obj_primal = try; JuMP.objective_value(jump_model); catch; -Inf; end
@@ -63,13 +71,13 @@ function jump_objective_ub(jump_model::JuMP.Model; require_feasibility::Bool=fal
     return max(obj_primal, obj_dual, obj_fval)
 end
 
-function jump_safe_objective_value(jump_model::JuMP.Model; require_feasibility::Bool=false)
+function jump_safe_objective_value(jump_model::JuMP.Model; require_feasibility::Bool=true)
     require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
 
     return try; return JuMP.objective_value(jump_model); catch; missing; end
 end
 
-function jump_safe_dual_objective_value(jump_model::JuMP.Model; require_feasibility::Bool=false)
+function jump_safe_dual_objective_value(jump_model::JuMP.Model; require_feasibility::Bool=true)
     require_feasibility && (JuMP.is_solved_and_feasible(jump_model) || return missing)
     
     return (

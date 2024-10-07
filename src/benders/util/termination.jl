@@ -1,12 +1,11 @@
-function modify(model::Benders.DecomposedModel, attribute::Benders.Termination.AbstractCriterion)
-    add_attribute!(model, attribute)
-    return nothing
-end
+# Termination criteria are done as "flag" and are never "applied" to the model.
+apply!(model::Benders.DecomposedModel, attribute::Benders.Termination.AbstractGeneralCriterion) = true
 
+# TODO: refactor this to a query
 function check_termination(model::Benders.DecomposedModel)
     function _inner(model::Benders.DecomposedModel)
-        has_attribute_type(model, Benders.Termination.AbstractCriterion) || return false
-        termination = get_attributes(model, Benders.Termination.AbstractCriterion)[end]
+        has_attribute_type(model, Benders.Termination.AbstractGeneralCriterion) || return false
+        termination = get_attribute(model, Benders.Termination.AbstractGeneralCriterion)
 
         if termination isa Benders.Termination.Stop
             iterations = current_iteration(model)

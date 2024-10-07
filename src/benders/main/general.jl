@@ -1,14 +1,15 @@
-function modify(model::Benders.DecomposedModel, attribute::Benders.Main.VirtualSoftBounds)
+function apply!(model::Benders.DecomposedModel, attribute::Benders.Main.VirtualSoftBounds)
+    jm = Benders.main(model)
+
     for vi in model.vis[1]
-        if isfinite(attribute.lower) && !JuMP.has_lower_bound(main(model)[:x][vi])
-            JuMP.set_lower_bound(main(model)[:x][vi], attribute.lower)
+        if isfinite(attribute.lower) && !JuMP.has_lower_bound(jm[:x][vi])
+            JuMP.set_lower_bound(jm[:x][vi], attribute.lower)
         end
 
-        if isfinite(attribute.upper) && !JuMP.has_upper_bound(main(model)[:x][vi])
-            JuMP.set_upper_bound(main(model)[:x][vi], attribute.upper)
+        if isfinite(attribute.upper) && !JuMP.has_upper_bound(jm[:x][vi])
+            JuMP.set_upper_bound(jm[:x][vi], attribute.upper)
         end
     end
 
-    add_attribute!(model, attribute)
-    return nothing
+    return true
 end
