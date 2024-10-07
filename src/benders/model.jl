@@ -63,12 +63,13 @@ Base.show(io::IO, model::DecomposedModel) = print(io, "DecomposedModel [algorith
 
 function model_from_lp(lpmd::JuMP.LPMatrixData, idx_v::Vector{Int64}, idx_c::Vector{Int64}; optimizer, cache::Dict{Symbol, Any})
     # TODO: pull "debug", "verbosity", and other settings from the list of (MOI.RawOptimizationAttribute) attributes that were added to the model
+    verbosity = 0
     debug = false
+    direct_mode = false
 
     # TODO: allow `::Base.OneTo{Int64}` instead of `::Vector{Int64}` too
 
-    model = JuMP.direct_model(optimizer)
-    # model = Model(() -> optimizer)
+    model = direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer)
     JuMP.set_silent(model)
     JuMP.set_string_names_on_creation(model, debug)
 
