@@ -1,4 +1,4 @@
-@kwdef struct Calliope <: AbstractExternalESM
+@kwdef struct Calliope <: AbstractExternalESMAnnotator
     # TODO: these could keep version, specific necessary information, etc.
 end
 
@@ -18,7 +18,7 @@ function _rows_with_entries(smcsc::SparseArrays.SparseMatrixCSC{Tv,Ti}, cols::Ab
     return findall(row_has_one)
 end
 
-function _generate_annotations(model::Benders.DecomposedModel, ext_fw::Calliope)
+function _generate_annotations(model::Benders.DecomposedModel, annotator::Calliope)
     # TODO: make sure / check / warn on MILP models, since this, e.g., matches "available_flow_cap", which is not a design variable
     _split_vec(vec::Vector, L::Int) = [vec[round(Int, i*L) + 1:round(Int, (i+1)*L)] for i in 0:(length(vec) ÷ L - 1)]
 

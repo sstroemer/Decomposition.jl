@@ -8,7 +8,7 @@ import ..Decomposition: TimerOutput, @timeit
 import ..Decomposition: has_attribute_type, get_attribute, get_attributes
 import ..Decomposition: current_iteration
 import ..Decomposition: jump_objective_lb, jump_objective_ub, jump_objective_all
-import ..Decomposition: apply!, execute!
+import ..Decomposition: annotate!, apply!, execute!
 
 import ..Decomposition as _DecompositionMainModule
 

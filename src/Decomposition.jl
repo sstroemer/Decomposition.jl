@@ -33,6 +33,7 @@ abstract type AbstractDecompositionQuery end
 Abstract type for a decomposed model, which is a model that is decomposed into a multiple models.
 
 # Mandatory fields
+- `annotator`
 - `info`
 - `attributes`
 - `timer`
@@ -134,8 +135,9 @@ end
 
 include("util/util.jl")
 include("external/solver/Solver.jl")
+include("external/annotators/general.jl")
 include("benders/Benders.jl")
-include("external/esm/general.jl")
+include("external/annotators/esm.jl")
 
 import .Benders
 

@@ -24,7 +24,7 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 4368
+T = 2184
 n = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
@@ -40,7 +40,12 @@ jump_model = jump_model_from_file("national_scale_$T.mps")
 # Decomposition.JuMP.optimize!(jump_model)
 
 # Gurobi.Optimizer(GRB_ENV)   ||   HiGHS.Optimizer()
-model = Benders.DecomposedModel(; jump_model, f_opt_main = () -> HiGHS.Optimizer(), f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV))
+model = Benders.DecomposedModel(;
+    jump_model,
+    annotator = Calliope(),
+    f_opt_main = () -> HiGHS.Optimizer(),
+    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV)
+)
 
 Decomposition.set_attribute.(model, [
     Benders.Config.TotalTimesteps(T),
@@ -67,8 +72,6 @@ Decomposition.set_attribute.(model, [
 
     Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 500),
 ]);
-
-annotate!(model, Calliope())
 
 # @profview generate_annotation(model, Calliope())
 # @b generate_annotation(model, Calliope())

@@ -1,5 +1,6 @@
 @kwdef struct DecomposedModel9 <: _DecompositionMainModule.AbstractDecomposedModel
     jump_model::JuMP.Model
+    annotator::_DecompositionMainModule.AbstractGeneralAnnotator
 
     name::String = JuMP.name(jump_model)
 

@@ -8,9 +8,10 @@ subs(model::Benders.DecomposedModel) = model.models[2:end]
 Base.Broadcast.broadcastable(model::DecomposedModel) = Ref(model)
 
 function finalize!(model::Benders.DecomposedModel)
-    # Apply all annotations if this is called for the first time.
+    # Construct & apply all annotations if this is called for the first time.
     if isempty(model.models)
-        @timeit model.timer "apply annotations" _apply_annotations!(model)
+        @timeit model.timer "annotations (generate)" annotate!(model)
+        @timeit model.timer "annotations (apply)" _apply_annotations!(model)
     end
 
     # Apply all attributes, that are flagged as dirty.
