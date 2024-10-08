@@ -5,6 +5,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
     cfg_debug = get_attribute(model, Config.ModelDebug, :enable)
 
     # Check if the model should be solved using a dual optimizer.
+    is_a_sub_model = false
     dualize = false
     if startswith(name, "main")
         for attr in get_attributes(model, _ExtModSolver.DualizeModel)
@@ -12,6 +13,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
             dualize = true
         end
     elseif startswith(name, "sub")
+        is_a_sub_model = true
         for attr in get_attributes(model, _ExtModSolver.DualizeModel)
             (attr.activate && attr.model == :sub) || continue
             dualize = true
@@ -29,11 +31,12 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
             # cfg_direct_mode ? JuMP.direct_model(f_opt_dual()) : JuMP.Model(f_opt_dual)
 
             # TODO: Is there a way to support dualization with direct models?
-            if cfg_direct_mode
-                @warn "Direct mode is not supported for dualized models, ignoring it" maxlog = 1
-            end
+            # if cfg_direct_mode
+            #     @warn "Direct mode is not supported for dualized models, ignoring it" maxlog = 1
+            # end
 
-            JuMP.Model(Dualization.dual_optimizer(() -> optimizer))
+            # JuMP.Model(Dualization.dual_optimizer(() -> optimizer))
+            JuMP.Model()
         else
             cfg_direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer)
         end
@@ -121,6 +124,55 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
     isempty(add_eq) || JuMP.@constraint(jump_model, mat_vec_scalar(x_data_t, A_t[:, idx_eq], 1.0)' .== lpmd.b_lower[add_eq])
     isempty(add_ge) || JuMP.@constraint(jump_model, mat_vec_scalar(x_data_t, A_t[:, idx_ge], 1.0)' .>= lpmd.b_lower[add_ge])
     isempty(add_lt) || JuMP.@constraint(jump_model, mat_vec_scalar(x_data_t, A_t[:, idx_lt], 1.0)' .<= lpmd.b_upper[add_lt])
+
+    # Set-up the linking/communication constraints to the main-problem.
+    if is_a_sub_model
+        shared_vis = sort(intersect(vis, model.vis[1]))
+        sub_only_vis = setdiff(vis, shared_vis)
+        
+        JuMP.@variable(jump_model, y[i = shared_vis])
+        JuMP.@constraint(jump_model, fix, x[shared_vis] .== y)
+
+        jump_model[:obj] = JuMP.AffExpr(0.0)
+        for vi in sub_only_vis
+            JuMP.add_to_expression!(jump_model[:obj], lpmd.c[vi], x[vi])
+        end
+        JuMP.@objective(jump_model, Min, jump_model[:obj])
+    end
+
+    if dualize
+        if cfg_direct_mode
+            @warn "Direct mode is not supported for dualized models, ignoring it" maxlog = 1
+        end
+
+        dual_jump_model = JuMP.Model(() -> optimizer)
+        dual_problem = Dualization.DualProblem(JuMP.backend(dual_jump_model))
+        Dualization.dualize(JuMP.backend(jump_model), dual_problem; variable_parameters = JuMP.index.(y.data))
+
+        # Mapping from initial variable indices to the dualized variables (parameters).
+        dual_jump_model.ext[:dualization_var_to_vi] = Dict(
+            JuMP.VariableRef(dual_jump_model, dual_problem.primal_dual_map.primal_parameter[JuMP.index(y[i])]) => i
+            for i in shared_vis
+        )
+
+        # Pre-process the quadratic objective function.
+        _params = keys(dual_jump_model.ext[:dualization_var_to_vi])
+        e_q_obj = JuMP.objective_function(dual_jump_model)
+
+        dual_jump_model.ext[:dualization_obj_base] = e_q_obj.aff
+        dual_jump_model.ext[:dualization_obj_param] = [
+            (term.first.a in _params) ? (term.first.a, term.first.b, term.second) : (term.first.b, term.first.a, term.second)
+            for term in e_q_obj.terms
+        ]       
+
+        dual_jump_model.ext[:dualization_is_dualized] = true
+        dual_jump_model.ext[:dualization_dual_problem] = dual_problem
+
+        # TODO: remove this and account for it in cut calculation
+        @assert unique(getindex.(dual_jump_model.ext[:dualization_obj_param], 3)) == [1.0]
+
+        return dual_jump_model
+    end
 
     return jump_model
 end

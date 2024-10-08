@@ -1,9 +1,11 @@
+# TODO: use the "fix" constraint and inject the relaxation directly there
+
 function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.RelaxationAll)
     @warn "`RelaxationAll` is currently untested ..."
 
     for i in 1:(length(model.models) - 1)
         attribute.index == -1 || attribute.index == i || continue
-        JuMP.relax_with_penalty!(sub(model; index=i); default = attribute.penalty)
+        JuMP.relax_with_penalty!(Benders.sub(model; index=i); default = attribute.penalty)
     end
 
     # TODO: consider everything below ...
@@ -25,7 +27,7 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
     for i in 1:(length(model.models) - 1)
         attribute.index == -1 || attribute.index == i || continue
 
-        m_sub = sub(model; index=i)
+        m_sub = Benders.sub(model; index=i)
         vis_main_in_sub = [vi for vi in vis_main if vi in m_sub[:x].axes[1]]
 
         JuMP.@variable(m_sub, z_pos[i = vis_main_in_sub], lower_bound = 0)

@@ -1,4 +1,7 @@
 function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.ObjectiveSelf)
+    @warn "This is currently handled directly in lpmd_to_jump"
+    return false
+
     vis_main = model.vis[1]
 
     for i in 1:(length(model.models) - 1)

@@ -12,15 +12,35 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
     #     # MOI.Utilities.reset_optimizer(bd_sub(model; index=i))   # only works for non-direct mode
     # end
 
-    # TODO: rework fixing to "==", which even helps with relaxing the main-sub-link
-
     jm = Benders.sub(model; index=query.index)
 
     # Fix the current main-model solution in the sub-model.
     @timeit model.timer "fix variables" begin
-        for vi in model.info[:results][:main][:sol].axes[1]
-            (vi in model.vis[1 + query.index]) || continue
-            JuMP.fix(jm[:x][vi], model.info[:results][:main][:sol][vi]; force=true)
+        if get(jm.ext, :dualization_is_dualized, false)
+            # Dualized model.
+            Base.Main.@infiltrate
+
+            # Construct all objective parts.
+            jm[:obj_base] = jm.ext[:dualization_obj_base]
+
+            jm[:obj_param] = JuMP.AffExpr(0.0)
+            for elem in jm.ext[:dualization_obj_param]
+                JuMP.add_to_expression!(
+                    jm[:obj_param],
+                    model.info[:results][:main][:sol][v2v_map[elem[1]]] * elem[3],
+                    elem[2]
+                )
+            end
+
+            jm[:obj] = jm[:obj_param] + jm[:obj_base]
+
+            # Update objective.
+            JuMP.@objective(jm, Min, jm[:obj])
+        else
+            # Standard (primal) model.
+            for vi in jm[:y].axes[1]
+                JuMP.fix(jm[:y][vi], model.info[:results][:main][:sol][vi]; force=true)
+            end
         end
     end
     

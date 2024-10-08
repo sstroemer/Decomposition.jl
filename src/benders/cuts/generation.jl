@@ -15,7 +15,7 @@ function generate_cuts(model::Benders.DecomposedModel)
     for i in 1:(length(model.models) - 1)
         vis_sub = model.vis[1 + i]
         m_sub = Benders.sub(model; index=i)
-        x_sub = m_sub[:x]
+        y_sub = m_sub[:y]
 
         cut_type = Benders.check_cut_type(m_sub)
 
@@ -31,7 +31,7 @@ function generate_cuts(model::Benders.DecomposedModel)
             for vi in vis_main
                 (vi in vis_sub) || continue
 
-                λ = JuMP.reduced_cost(x_sub[vi])
+                λ = JuMP.reduced_cost(y_sub[vi])
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
@@ -43,7 +43,7 @@ function generate_cuts(model::Benders.DecomposedModel)
             for vi in vis_main
                 (vi in vis_sub) || continue
 
-                λ = JuMP.dual(JuMP.FixRef(x_sub[vi]))
+                λ = JuMP.dual(JuMP.FixRef(y_sub[vi]))
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
