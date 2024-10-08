@@ -24,8 +24,8 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 744
-n = 12
+T = 4368
+n = 52
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
@@ -43,8 +43,8 @@ jump_model = jump_model_from_file("national_scale_$T.mps")
 model = Benders.DecomposedModel(;
     jump_model,
     annotator = Calliope(),
-    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV),
-    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),
+    f_opt_main = () -> HiGHS.Optimizer(),
+    f_opt_sub = () -> HiGHS.Optimizer(),
 )
 
 Decomposition.set_attribute.(model, [
@@ -64,10 +64,12 @@ Decomposition.set_attribute.(model, [
     #       => scan for that automatically if the order is not guaranteed
 
     Benders.Main.ObjectiveDefault(),
-    Benders.Sub.ObjectiveSelf(),
+    # Benders.Sub.ObjectiveSelf(),
+
+    # Benders.Sub.RelaxationLinked(),     # TODO: this fails if it is called before the objectives - fix this!
 
     Benders.Main.VirtualSoftBounds(0.0, 1e6),
-    Benders.Main.RegularizationLevelSet(alpha = 0.2, infeasible_alpha_step = 0.1),
+    Benders.Main.RegularizationLevelSet(alpha = 0.25, infeasible_alpha_step = 0.25),
 
     # These two may help HiGHS, but may (considerably) hurt Gurobi
     # Benders.CutPreprocessingRemoveRedundant(),
@@ -121,6 +123,8 @@ summarize_timings(model)
 
 save(model)
 # TODO: bd_query(model, BD_SubFeasibility())
+
+print(Benders.main(model))
 
 # unset_silent(main(model))
 # optimize!(main(model))

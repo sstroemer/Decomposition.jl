@@ -7,7 +7,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
         # TODO: make that an attribute
         # TODO / WRITING: this helps especially with HiGHS, and when solving the dualized subs, but also when solving the normal/primal one; it also slightly helps Gurobi for both cases
         if !isfinite(ub)
-            ub = 1e14
+            ub = 1e12
         end
 
         if !isfinite(ub)
@@ -42,7 +42,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
                     # TODO: afterwards remove the `require_feasibility` setting above too!
                 end
 
-                if !isfinite(candidate)
+                if JuMP.solver_name(jm) == "HiGHS" && !isfinite(candidate)
                     # TODO: fix this
                     # This happens with HiGHS if crossover is "imprecise", leading to a simplex cleanup, which then
                     # might indicate an unbounded problem (even if it is not).
@@ -59,6 +59,11 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
 
                 candidate
             end
+
+            if !isfinite(lb)
+                lb = -1e8  # TODO: make that an attribute
+            end
+
             model.info[:results][:main][:obj_lb] = lb
 
             # Switch to level-set mode.

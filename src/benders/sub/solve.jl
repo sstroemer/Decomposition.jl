@@ -18,7 +18,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
     @timeit model.timer "fix variables" begin
         if get(jm.ext, :dualization_is_dualized, false)
             # Dualized model.
-            Base.Main.@infiltrate
+            v2v_map = jm.ext[:dualization_var_to_vi]
 
             # Construct all objective parts.
             jm[:obj_base] = jm.ext[:dualization_obj_base]
@@ -35,7 +35,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
             jm[:obj] = jm[:obj_param] + jm[:obj_base]
 
             # Update objective.
-            JuMP.@objective(jm, Min, jm[:obj])
+            JuMP.@objective(jm, Max, jm[:obj])
         else
             # Standard (primal) model.
             for vi in jm[:y].axes[1]

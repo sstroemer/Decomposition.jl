@@ -146,6 +146,10 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
         end
 
         dual_jump_model = JuMP.Model(() -> optimizer)
+
+        JuMP.set_silent(dual_jump_model)
+        JuMP.set_string_names_on_creation(dual_jump_model, false)
+        
         dual_problem = Dualization.DualProblem(JuMP.backend(dual_jump_model))
         Dualization.dualize(JuMP.backend(jump_model), dual_problem; variable_parameters = JuMP.index.(y.data))
 
@@ -167,6 +171,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
 
         dual_jump_model.ext[:dualization_is_dualized] = true
         dual_jump_model.ext[:dualization_dual_problem] = dual_problem
+        # dual_jump_model.ext[:dualization_primal_problem] = jump_model
 
         # TODO: remove this and account for it in cut calculation
         @assert unique(getindex.(dual_jump_model.ext[:dualization_obj_param], 3)) == [1.0]

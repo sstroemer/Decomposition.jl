@@ -1,6 +1,6 @@
 function _gurobi_modify_jump(jump_model::JuMP.Model, attribute::AlgorithmSimplex)
     if attribute.mode == :primal
-        JuMP.set_attribute(mojump_modeldel, "Method", 0)
+        JuMP.set_attribute(jump_model, "Method", 0)
         return true
     elseif attribute.mode == :dual
         JuMP.set_attribute(jump_model, "Method", 1)
