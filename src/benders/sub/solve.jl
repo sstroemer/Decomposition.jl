@@ -25,6 +25,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
             jm[:obj_base] = jm.ext[:dualization_obj_base]
 
             jm[:obj_param] = JuMP.AffExpr(0.0)
+            jm[:obj_param_π_0] = JuMP.AffExpr(0.0)
             for elem in jm.ext[:dualization_obj_param]
                 if haskey(v2v_map, elem[1])
                     JuMP.add_to_expression!(
@@ -35,7 +36,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
                 elseif mis_fsz_cuts
                     # The "artifical" π_0 variable.
                     JuMP.add_to_expression!(
-                        jm[:obj_param],
+                        jm[:obj_param_π_0],
                         JuMP.value(Benders.main(model)[:θ][query.index]) * elem[3],
                         jm.ext[:dualization_π_0]
                     )
@@ -44,7 +45,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
                 end
             end
 
-            jm[:obj] = jm[:obj_param] + jm[:obj_base]           
+            jm[:obj] = jm[:obj_param] + jm[:obj_base] + jm[:obj_param_π_0]       
 
             # if mis_fsz_cuts
             #     # Update & add the MISFSZ objective term.
@@ -55,6 +56,8 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
 
             # Update objective.
             JuMP.@objective(jm, Max, jm[:obj])
+
+            # Base.Main.@infiltrate
         else
             # Standard (primal) model.
             for vi in jm[:y].axes[1]
@@ -68,3 +71,26 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
 
     return nothing
 end
+
+
+
+# using JuMP
+# import Gurobi
+
+# JuMP.write_to_file(jm, "tmp.lp")
+# jm = JuMP.read_from_file("tmp.mps")
+
+# JuMP.set_optimizer(jm, Gurobi.Optimizer)
+
+# JuMP.set_attribute(jm, "Presolve", 0)
+# JuMP.set_attribute(jm, "Method", 2)
+# JuMP.set_attribute(jm, "PreDual", 0)
+# JuMP.set_attribute(jm, "NumericFocus", 3)
+# JuMP.set_attribute(jm, "InfUnbdInfo", 1)
+# JuMP.set_attribute(jm, "DualReductions", 0)
+
+# JuMP.optimize!(jm)
+
+# JuMP.solution_summary(jm)
+
+# JuMP.constraint_by_name(jm, "cglp_normalization")

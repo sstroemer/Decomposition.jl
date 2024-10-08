@@ -161,7 +161,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
         dual_jump_model = JuMP.Model(() -> optimizer)
 
         JuMP.set_silent(dual_jump_model)
-        JuMP.set_string_names_on_creation(dual_jump_model, false)
+        JuMP.set_string_names_on_creation(dual_jump_model, cfg_debug)
         
         dual_problem = Dualization.DualProblem(JuMP.backend(dual_jump_model))
         Dualization.dualize(JuMP.backend(jump_model), dual_problem; variable_parameters = vcat(JuMP.index.(y.data), JuMP.index(θ_star)))
@@ -199,16 +199,26 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
                 end
             end
 
-            # Add the "CGLP normalization condition" (the "reduced" version as suggested).
-            _dual_sign(v::JuMP.VariableRef) = JuMP.has_lower_bound(v) ? 1 : -1
-            ω_0 = 1.0 * _dual_sign(dual_jump_model.ext[:dualization_π_0])   # TODO: make this a parameter
-            # TODO NOTE WRITING: observe the "-1"/sign changing because the conic duality results in "<= 0" duals
+            # TODO: instead of `dual_jump_model.ext[:dualization_π]`, just register it as `dual_jump_model[:π]`
+
             dual_jump_model.ext[:dualization_π] = [elem[2] for elem in dual_jump_model.ext[:dualization_obj_param] if elem[2] != dual_jump_model.ext[:dualization_θ_star]]
-            JuMP.@constraint(
-                dual_jump_model,
-                cglp_normalization,
-                sum(π * _dual_sign(π) for π in dual_jump_model.ext[:dualization_π]) + ω_0 * dual_jump_model.ext[:dualization_π_0] == 100
-            )
+
+            # Construct helper variables to access the L1 norm of π.
+            idx_π = eachindex(dual_jump_model.ext[:dualization_π])
+            JuMP.@variable(dual_jump_model, π_pos[i = idx_π] >= 0)
+            JuMP.@variable(dual_jump_model, π_neg[i = idx_π] >= 0)
+            # JuMP.@constraint(dual_jump_model, cons_π_abs, π_pos .- π_neg .== dual_jump_model.ext[:dualization_π])
+            JuMP.@constraint(dual_jump_model, cons_π_pos, π_pos .>= dual_jump_model.ext[:dualization_π])
+            JuMP.@constraint(dual_jump_model, cons_π_neg, π_neg .>= -dual_jump_model.ext[:dualization_π])
+            JuMP.@expression(dual_jump_model, l1_norm_π, sum(π_pos) + sum(π_neg))
+
+            # Construct the normalization expression.
+            # TODO NOTE WRITING: observe the "-1"/sign changing because the conic duality results in "<= 0" duals
+            ω_0 = -1.0  # TODO: make this a parameter
+            JuMP.@expression(dual_jump_model, expr_cglp_normalization, l1_norm_π + ω_0 * dual_jump_model.ext[:dualization_π_0])
+
+            # Add the "CGLP normalization condition" (the "reduced" version as suggested).
+            JuMP.@constraint(dual_jump_model, cons_cglp_normalization, expr_cglp_normalization == 1)
     
             # TODO WRITING NOTE: this uses conic duality, leading to a completely different model structure than the paper
             #                    this could have (bad?) implications for the cut generation, solving times, etc.

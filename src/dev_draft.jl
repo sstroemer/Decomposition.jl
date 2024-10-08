@@ -24,8 +24,8 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 744
-n = 12
+T = 2184
+n = 26
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
@@ -117,16 +117,24 @@ Decomposition.set_attribute.(model, [
 #     JuMP.set_attribute(m, "dual_feasibility_tolerance", 1e-3)   # lower seems better
 # end
 
+# TODO: CHECK!!!!!
+# http://www.dei.unipd.it/~fisch/papers/Benders_mis_extended_draft.pdf
+# [...] was proposed by Benders
+#   himself in his seminal paper [5]: if we solve the dual slave with the primal
+#   simplex method, when we discover an unbounded ray we are “sitting on
+#   a vertex” of polyhedron D, hence we can generate also the optimality cut
+#   corresponding to this dual vertex, with no additional computational effort.
+# Also: Much better explanation of MISFSZ cuts => Section 4
+# Also: Notes on stability of normalization constraint => end of Section 4
+# Also: [...] it is not difficult to see that π/π0 gives an optimal [...]  ===>>> Erklärung für UB reconstruction?
+
+# => re-optimize with primal simplex (> warm-start)
+
+# TODO: add MISFSZ cuts (opt & feas) to the log printing, and a # of models currently feasible
+
 finalize!(model)
 
 while !iterate!(model; nthreads = -1); end
-
-
-cut = model.cuts[:optimality][1]
-for other in model.cuts[:optimality][2:end]
-    jump_expressions_equal(cut.cut_exp, other.cut_exp) && println("found")
-end
-
 
 summarize_timings(model)
 

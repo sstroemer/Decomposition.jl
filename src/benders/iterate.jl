@@ -70,9 +70,16 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     lb = coalesce(model.info[:results][:main][:obj_lb], -Inf)
 
     # Calculate the upper bound.
-    subs_obj = [it[:obj] for it in model.info[:results][:subs]]
-    ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
-    ub += model.info[:results][:main][:obj_base]
+    # TODO: after refactoring "extract" for subs, the below should be the same for all cut types
+    if has_attribute_type(model, Benders.CutTypeMISFSZ)
+        ub = 0.0
+        ub += model.info[:results][:main][:obj_base]
+        ub += coalesce(sum(res[:obj_val_primal] for res in model.info[:results][:subs]), +Inf)
+    else
+        subs_obj = [it[:obj] for it in model.info[:results][:subs]]
+        ub = any(ismissing, subs_obj) ? Inf : sum(subs_obj)
+        ub += model.info[:results][:main][:obj_base]
+    end
 
     # Find all cuts that were added in this iteration.
     new_cuts = OrderedDict(

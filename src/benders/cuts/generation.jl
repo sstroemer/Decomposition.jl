@@ -25,25 +25,23 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
         get(m_sub.ext, :dualization_is_dualized, false) || continue
 
         # TODO: better checks!
-        if gen_misfsz_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
-            # Base.Main.@infiltrate
-
-            # TODO: merge that into the feas cut below!
-
-            exp_cut = JuMP.AffExpr(JuMP.value(m_sub[:obj_base]))
+        if gen_misfsz_cuts # && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
+            exp_cut = JuMP.AffExpr(JuMP.value(m_sub[:obj]))
             for elem in m_sub.ext[:dualization_obj_param]
                 if haskey(m_sub.ext[:dualization_var_to_vi], elem[1])
                     vi = m_sub.ext[:dualization_var_to_vi][elem[1]]
                     λ = JuMP.value(elem[2])
                     JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
-                    # JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])     # TODO ???
+                    JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
                 else
                     λ = JuMP.value(m_sub.ext[:dualization_π_0])
                     θ = Benders.main(model)[:θ][i]
                     JuMP.add_to_expression!(exp_cut, λ, θ)
-                    # JuMP.add_to_expression!(exp_cut, λ, -JuMP.value(θ))     # TODO ???
+                    JuMP.add_to_expression!(exp_cut, λ, -JuMP.value(θ))
                 end
             end
+
+            # TODO: detect and "split" these into opt/feas cuts based on π_0
 
             # # Add the violated θ to the cut.
             # λ = JuMP.value(m_sub[:π_0])
