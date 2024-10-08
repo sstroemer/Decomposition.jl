@@ -4,6 +4,28 @@ function jump_model_from_file(args...; kwargs...)
     return jump_model
 end
 
+function jump_expressions_equal(expr1::JuMP.AffExpr, expr2::JuMP.AffExpr; rel_ctol::Real, rel_btol::Real)
+    # TODO: WRITING
+    # the tolerances seem to heavily impact outcomes, compare with `sqrt(eps(Float64))` or `eps(Float64)` for example
+
+    # Make `e1` the smaller one.
+    e1, e2 = (length(expr1.terms) > length(expr2.terms)) ? (expr2, expr1) : (expr1, expr2)
+
+    # Check if the constant terms are equal.
+    isapprox(e1.constant, e2.constant; rtol=rel_btol) || return false
+
+    # Check if the variable terms are equal.
+    for (var, coeff) in e1.terms
+        # Check if the variable even exists.
+        haskey(e2.terms, var) || return false
+
+        # Check if the coefficients are equal.
+        isapprox(coeff, e2.terms[var]; rtol=rel_ctol) || return false
+    end
+
+    return true
+end
+
 # TODO: properly rework everything below
 
 function _fast_est_dual_obj_val(jump_model::JuMP.Model)

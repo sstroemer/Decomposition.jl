@@ -7,16 +7,69 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.AbstractCutTy
         end
     end
 
-    jm = Benders.main(model)
-
     # For optimality cuts, we need to setup the θ variable.
-    if attribute isa Benders.AbstractOptimalityCutType && !haskey(jm, :θ)
+    if attribute isa Benders.AbstractOptimalityCutType && !haskey(Benders.main(model), :θ)
         # First time configuring the optimality cut type => setup the θ variable.
-        JuMP.@variable(jm, θ[i = 1:(length(model.models) - 1)])
+        JuMP.@variable(Benders.main(model), θ[i = 1:(length(model.models) - 1)])
         JuMP.set_lower_bound.(θ, -1e4)           # TODO
     end
 
     return true
+end
+
+function apply!(model::Benders.DecomposedModel, attribute::Benders.CutTypeMISFSZ)
+    return true # TODO
+    # if has_attribute_type(model, Benders.AbstractFeasibilityCutType)
+    #     @error "Active cut type `MISFSZ` cannot be used with general feasibility cuts"
+    #     return false
+    # end
+
+    # if has_attribute_type(model, Benders.AbstractOptimalityCutType)
+    #     @error "Active cut type `MISFSZ` cannot be used with general optimality cuts"
+    #     return false
+    # end
+
+    # for jm in Benders.subs(model)
+    #     if !get(jm.ext, :dualization_is_dualized, false)
+    #         @error "Active cut type `MISFSZ` requires the sub-models to be dualized"
+    #         return false
+    #     end
+
+    #     # TODO: Make that a parameter
+    #     ω_0 = 1.0
+
+    #     # Add the π_0 variable to the sub-model.
+    #     JuMP.@variable(jm, π_0 >= 0)
+
+    #     # Multiply `d` (RHS) with `π_0`.
+    #     # TODO: is it safe to leave out the `x >= ...` and `x <= ...` constraints?
+    #     cons = JuMP.all_constraints(jm; include_variable_in_set_constraints = false)
+    #     for con in cons
+    #         co = JuMP.constraint_object(con)
+
+    #         rhs = (co.set isa MOI.EqualTo) ? co.set.value : ((co.set isa MOI.LessThan) ? co.set.upper : co.set.lower)
+    #         # JuMP.set_normalized_coefficient(con, π_0, -rhs)
+    #         # JuMP.set_normalized_rhs(con, 0)           
+    #     end
+
+    #     # Add the "CGLP normalization condition" (the "reduced" version as suggested).
+    #     JuMP.@constraint(
+    #         jm,
+    #         cglp_normalization,
+    #         sum(elem[2] for elem in jm.ext[:dualization_obj_param]) + ω_0 * π_0 == 1
+    #     )
+
+    #     # Construct the additional objective term.
+    #     jm[:obj_misfsz] = JuMP.AffExpr(0.0)
+    # end
+
+    # # Finally, we need the standard θ variables in the main-model (if not already constructed).
+    # if !haskey(Benders.main(model), :θ)
+    #     JuMP.@variable(Benders.main(model), θ[i = eachindex(Benders.subs(model))])
+    #     JuMP.set_lower_bound.(θ, -1e4)           # TODO
+    # end
+
+    # return true
 end
 
 # Cut processing is done as "flag" and is never "applied" to the model.

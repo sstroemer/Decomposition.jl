@@ -1,34 +1,11 @@
 function generate_cuts(model::Benders.DecomposedModel)
-    all_new_cuts = Dict{Symbol, Vector{Any}}(
-        :feasibility => [],
-        :optimality => []
-    )
-
-    _generate_cuts_from_dual(model, all_new_cuts)
-    _generate_cuts_from_primal(model, all_new_cuts)
-
-    # Remove redundant (duplicate) cuts.
-    # TODO: also, do not create ones that already exist
-
     new_cuts = Dict{Symbol, Vector{Any}}(
         :feasibility => [],
         :optimality => []
     )
 
-    for cut_type in [:feasibility, :optimality]
-        for cut1 in all_new_cuts[cut_type]
-            unique_cut = true
-            for cut2 in new_cuts[cut_type]
-                if cut1[2] == cut2[2]
-                    unique_cut = false
-                    break
-                end
-            end
-            if unique_cut
-                push!(new_cuts[cut_type], cut1)
-            end
-        end
-    end
+    _generate_cuts_from_dual(model, new_cuts)
+    _generate_cuts_from_primal(model, new_cuts)
 
     # Base.Main.@infiltrate
     return new_cuts
@@ -38,7 +15,8 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
     # Shall we generate cuts?
     gen_feas_cuts = has_attribute_type(model, Benders.AbstractFeasibilityCutType)
     gen_opt_cuts = has_attribute_type(model, Benders.AbstractOptimalityCutType)
-    gen_feas_cuts || gen_opt_cuts || return new_cuts
+    gen_misfsz_cuts = has_attribute_type(model, Benders.CutTypeMISFSZ)
+    gen_feas_cuts || gen_opt_cuts || gen_misfsz_cuts || return new_cuts
 
     cur_sol_main = model.info[:results][:main][:sol]::JuMP.Containers.DenseAxisArray
 
@@ -47,29 +25,66 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
         get(m_sub.ext, :dualization_is_dualized, false) || continue
 
         # TODO: better checks!
-        if gen_feas_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
+        if gen_misfsz_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
+            # Base.Main.@infiltrate
+
+            # TODO: merge that into the feas cut below!
+
+            exp_cut = JuMP.AffExpr(JuMP.value(m_sub[:obj_base]))
+            for elem in m_sub.ext[:dualization_obj_param]
+                if haskey(m_sub.ext[:dualization_var_to_vi], elem[1])
+                    vi = m_sub.ext[:dualization_var_to_vi][elem[1]]
+                    λ = JuMP.value(elem[2])
+                    JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
+                    # JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])     # TODO ???
+                else
+                    λ = JuMP.value(m_sub.ext[:dualization_π_0])
+                    θ = Benders.main(model)[:θ][i]
+                    JuMP.add_to_expression!(exp_cut, λ, θ)
+                    # JuMP.add_to_expression!(exp_cut, λ, -JuMP.value(θ))     # TODO ???
+                end
+            end
+
+            # # Add the violated θ to the cut.
+            # λ = JuMP.value(m_sub[:π_0])
+            # θ_current = JuMP.value(Benders.main(model)[:θ][i])
+            # JuMP.add_to_expression!(exp_cut, λ, -Benders.main(model)[:θ][i])
+            # JuMP.add_to_expression!(exp_cut, λ, θ_current)
+            # # TODO: should the sign be reversed?
+
+            push!(new_cuts[:feasibility], (i, exp_cut))
+        elseif false && gen_feas_cuts && !gen_misfsz_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
             # Primal unbounded => construct a feasibility cut from the ray.
             exp_cut = JuMP.AffExpr(JuMP.value(m_sub[:obj_base]))
             for elem in m_sub.ext[:dualization_obj_param]
+                # Account for "other" parameters (e.g., by MISFSZ cuts).
+                haskey(m_sub.ext[:dualization_var_to_vi], elem[1]) || continue
+                
                 vi = m_sub.ext[:dualization_var_to_vi][elem[1]]
                 λ = JuMP.value(elem[2])
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
             push!(new_cuts[:feasibility], (i, exp_cut))
-        elseif gen_opt_cuts && JuMP.termination_status(m_sub) == MOI.OPTIMAL && JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
+        elseif false && gen_opt_cuts && JuMP.termination_status(m_sub) == MOI.OPTIMAL && JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
             exp_cut = JuMP.AffExpr(
                 JuMP.dual_status(m_sub) == MOI.FEASIBLE_POINT ? JuMP.dual_objective_value(m_sub) : JuMP.objective_value(m_sub)
             )
             for elem in m_sub.ext[:dualization_obj_param]
+                # Account for "other" parameters (e.g., by MISFSZ cuts).
+                haskey(m_sub.ext[:dualization_var_to_vi], elem[1]) || continue
+
                 vi = m_sub.ext[:dualization_var_to_vi][elem[1]]
                 λ = JuMP.value(elem[2])
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
+
+            # TODO: does the opt cut need the \pi_0 term too?
+
             push!(new_cuts[:optimality], (i, exp_cut))
         else
-            @warn "Could not create the requested cut type" sub_model = i gen_feas_cuts gen_opt_cuts
+            # @warn "Could not create the requested cut type" sub_model = i gen_feas_cuts gen_opt_cuts maxlog = 1
         end
     end
 

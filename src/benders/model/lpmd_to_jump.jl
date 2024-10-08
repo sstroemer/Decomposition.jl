@@ -137,7 +137,20 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
         for vi in sub_only_vis
             JuMP.add_to_expression!(jump_model[:obj], lpmd.c[vi], x[vi])
         end
-        JuMP.@objective(jump_model, Min, jump_model[:obj])
+        
+        # Construct objective / optimization sense.
+        if has_attribute_type(model, Benders.CutTypeMISFSZ)
+            # Modify the sub-problem into a feasibility only one, following the MIS-FSZ cut type.
+            
+            # The linking variable that get's "violated" from the main-model.
+            JuMP.@variable(jump_model, θ_star)
+
+            # Move objective into constraint.
+            JuMP.@constraint(jump_model, limit_objective, jump_model[:obj] <= θ_star)
+            JuMP.@objective(jump_model, Min, 0)
+        else
+            JuMP.@objective(jump_model, Min, jump_model[:obj])
+        end
     end
 
     if dualize
@@ -151,7 +164,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
         JuMP.set_string_names_on_creation(dual_jump_model, false)
         
         dual_problem = Dualization.DualProblem(JuMP.backend(dual_jump_model))
-        Dualization.dualize(JuMP.backend(jump_model), dual_problem; variable_parameters = JuMP.index.(y.data))
+        Dualization.dualize(JuMP.backend(jump_model), dual_problem; variable_parameters = vcat(JuMP.index.(y.data), JuMP.index(θ_star)))
 
         # Mapping from initial variable indices to the dualized variables (parameters).
         dual_jump_model.ext[:dualization_var_to_vi] = Dict(
@@ -167,7 +180,40 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
         dual_jump_model.ext[:dualization_obj_param] = [
             (term.first.a in _params) ? (term.first.a, term.first.b, term.second) : (term.first.b, term.first.a, term.second)
             for term in e_q_obj.terms
-        ]       
+        ]
+
+        # Handle MIS-FSZ cut type.
+        if has_attribute_type(model, Benders.CutTypeMISFSZ)
+            # Get the θ_star parameter in the dualized model.
+            dual_jump_model.ext[:dualization_θ_star] = JuMP.VariableRef(dual_jump_model, dual_problem.primal_dual_map.primal_parameter[JuMP.index(θ_star)])
+
+            # Use that to find the `π_0`.
+            for term in JuMP.objective_function(dual_jump_model).terms
+                if term.first.a == dual_jump_model.ext[:dualization_θ_star]
+                    dual_jump_model.ext[:dualization_π_0] = term.first.b
+                    break
+                end
+                if term.first.b == dual_jump_model.ext[:dualization_θ_star]
+                    dual_jump_model.ext[:dualization_π_0] = term.first.a
+                    break
+                end
+            end
+
+            # Add the "CGLP normalization condition" (the "reduced" version as suggested).
+            _dual_sign(v::JuMP.VariableRef) = JuMP.has_lower_bound(v) ? 1 : -1
+            ω_0 = 1.0 * _dual_sign(dual_jump_model.ext[:dualization_π_0])   # TODO: make this a parameter
+            # TODO NOTE WRITING: observe the "-1"/sign changing because the conic duality results in "<= 0" duals
+            dual_jump_model.ext[:dualization_π] = [elem[2] for elem in dual_jump_model.ext[:dualization_obj_param] if elem[2] != dual_jump_model.ext[:dualization_θ_star]]
+            JuMP.@constraint(
+                dual_jump_model,
+                cglp_normalization,
+                sum(π * _dual_sign(π) for π in dual_jump_model.ext[:dualization_π]) + ω_0 * dual_jump_model.ext[:dualization_π_0] == 100
+            )
+    
+            # TODO WRITING NOTE: this uses conic duality, leading to a completely different model structure than the paper
+            #                    this could have (bad?) implications for the cut generation, solving times, etc.
+            #                    discuss / investigate this further (different dual formulations)
+        end
 
         dual_jump_model.ext[:dualization_is_dualized] = true
         dual_jump_model.ext[:dualization_dual_problem] = dual_problem

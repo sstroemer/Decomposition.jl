@@ -22,6 +22,14 @@ abstract type AbstractCutProcessing <: AbstractGeneralAttribute end
 @kwdef struct OptimalityCutTypeAggregated <: AbstractOptimalityCutType end
 @kwdef struct OptimalityCutTypeAdaptive <: AbstractOptimalityCutType end
 
+"""
+    CutTypeMISFSZ
+
+"Minimal Infeasible Subsystem" (MIS) cuts, based on the paper by Fischetti, Salvagnin, & Zanette (FSZ).
+DOI 10.1007/s10107-010-0365-7
+"""
+@kwdef struct CutTypeMISFSZ <: AbstractCutType end
+
 # ╒════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╕
 # │ CUTS: Optimality                                                                                                   │
 # ╰ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶╯
@@ -60,7 +68,16 @@ end
 # │ ATTRIBUTES: Cut Processing                                                                                         │
 # ╰ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶╯
 
-@kwdef struct CutPreprocessingRemoveRedundant <: AbstractCutProcessing end
+# TODO: add the comparison tolerances here as parameters
+@kwdef struct CutPreprocessingRemoveRedundant <: AbstractCutProcessing
+    rtol_coeff::Float64 = eps(Float64)
+    rtol_const::Float64 = eps(Float64)
+end
+
+@kwdef struct CutPreprocessingMakeUnique <: AbstractCutProcessing
+    rtol_coeff::Float64 = eps(Float64)
+    rtol_const::Float64 = eps(Float64)
+end
 
 @kwdef struct CutPreprocessingStabilizeNumericalRange <: AbstractCutProcessing
     const_factor_threshold::Float64                  # e.g., 1e10

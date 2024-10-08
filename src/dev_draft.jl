@@ -24,8 +24,8 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 4368
-n = 52
+T = 744
+n = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
@@ -43,8 +43,8 @@ jump_model = jump_model_from_file("national_scale_$T.mps")
 model = Benders.DecomposedModel(;
     jump_model,
     annotator = Calliope(),
-    f_opt_main = () -> HiGHS.Optimizer(),
-    f_opt_sub = () -> HiGHS.Optimizer(),
+    f_opt_main = () -> Gurobi.Optimizer(GRB_ENV),
+    f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),
 )
 
 Decomposition.set_attribute.(model, [
@@ -55,10 +55,11 @@ Decomposition.set_attribute.(model, [
 
     Solver.AlgorithmIPM(model = :main),
     Solver.ExtractDualRay(model = :sub),
-    # Solver.DualizeModel(model = :sub),     # TODO: seems to be not passing any starting values, so super slow, consider "manually" formulating the dual instead of using the dual optimizer
+    Solver.DualizeModel(model = :sub),     # TODO: seems to be not passing any starting values, so super slow, consider "manually" formulating the dual instead of using the dual optimizer
 
     Benders.FeasibilityCutTypeMulti(),
     Benders.OptimalityCutTypeMulti(),
+    Benders.CutTypeMISFSZ(),
 
     # TODO: currently the cut-type constructs θ, which is needed for the objectives below
     #       => scan for that automatically if the order is not guaranteed
@@ -69,13 +70,14 @@ Decomposition.set_attribute.(model, [
     # Benders.Sub.RelaxationLinked(),     # TODO: this fails if it is called before the objectives - fix this!
 
     Benders.Main.VirtualSoftBounds(0.0, 1e6),
-    Benders.Main.RegularizationLevelSet(alpha = 0.25, infeasible_alpha_step = 0.25),
+    # Benders.Main.RegularizationLevelSet(alpha = 0.25, infeasible_alpha_step = 0.25),
 
     # These two may help HiGHS, but may (considerably) hurt Gurobi
-    # Benders.CutPreprocessingRemoveRedundant(),
+    # Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-20, rtol_const=1e-20),     # TODO WRITING NOTE: this seems to hurt with strict tolerances, and help with looser ones (??); for HiGHS
+    # Benders.CutPreprocessingMakeUnique(rtol_coeff=1e-4, rtol_const=1e-4),          # TODO WRITING NOTE: this seems to help also for Gurobi
     # Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4),
 
-    Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 500),
+    Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 50000),
 ]);
 
 # @profview generate_annotation(model, Calliope())
@@ -118,6 +120,13 @@ Decomposition.set_attribute.(model, [
 finalize!(model)
 
 while !iterate!(model; nthreads = -1); end
+
+
+cut = model.cuts[:optimality][1]
+for other in model.cuts[:optimality][2:end]
+    jump_expressions_equal(cut.cut_exp, other.cut_exp) && println("found")
+end
+
 
 summarize_timings(model)
 

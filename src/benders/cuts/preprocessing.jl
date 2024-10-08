@@ -1,24 +1,28 @@
 function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}})
     !has_attribute_type(model, Benders.CutPreprocessingRemoveRedundant) && return nothing
 
-    # TODO: feasibility cuts can also be redundant within an iteration/ between sub-models: (1, -x[2905] + 31965.28), (4, -x[2905] + 36838.016), ...
-    for type in [:feasibility, :optimality]
-        valid = [true for _ in new_cuts[type]]
+    attr = get_attribute(model, Benders.CutPreprocessingRemoveRedundant)
+    tol = (rel_ctol = attr.rtol_coeff, rel_btol = attr.rtol_const)
 
-        for i in eachindex(new_cuts[type])
-            cut = new_cuts[type][i]
-            
-            iter_oldcuts = (c for c in model.cuts[type] if c.sub_model_index == cut[1])
-            isempty(iter_oldcuts) && continue
+    # Note: Optimality cuts contain θ and can therefore only be compared against once from the same sub-model.
 
-            last_opt_cut = last(c for c in model.cuts[type] if c.sub_model_index == cut[1])
-            cut[2] != last_opt_cut.cut_exp && continue
+    # TODO: why does this seem to hurt solver performance?
 
-            # This cut is identical to an old one.
-            valid[i] = false
+    for cut_type in [:feasibility, :optimality]
+        valid_cuts = []
+        for cut in new_cuts[cut_type]
+            if cut_type == :optimality
+                any(
+                    jump_expressions_equal(cut[2], other.cut_exp; tol...) for other in model.cuts[:optimality]
+                    if cut[1] == other.sub_model_index
+                ) && continue
+            else
+                any(jump_expressions_equal(cut[2], other.cut_exp; tol...) for other in model.cuts[cut_type]) && continue
+            end
+            push!(valid_cuts, cut)
         end
 
-        new_cuts[type] = [new_cuts[type][i] for i in eachindex(new_cuts[type]) if valid[i]]
+        new_cuts[cut_type] = valid_cuts
     end
 
     return nothing
@@ -56,10 +60,35 @@ function _preprocess_cuts_stabilize_numerical_range!(model::Benders.DecomposedMo
     return nothing
 end
 
+function _preprocess_cuts_make_unique!(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}})
+    !has_attribute_type(model, Benders.CutPreprocessingMakeUnique) && return nothing
+
+    attr = get_attribute(model, Benders.CutPreprocessingMakeUnique)
+    tol = (rel_ctol = attr.rtol_coeff, rel_btol = attr.rtol_const)
+
+    # Note: Optimality cuts contain θ and can therefore only be compared against once from the same sub-model.
+
+    for cut_type in [:feasibility, :optimality]
+        valid_cuts = []
+        for cut in new_cuts[cut_type]
+            if cut_type == :optimality
+                any(jump_expressions_equal(cut[2], other[2]; tol...) for other in valid_cuts if cut[1] == other[1]) && continue
+            else
+                any(jump_expressions_equal(cut[2], other[2]; tol...) for other in valid_cuts) && continue
+            end
+            push!(valid_cuts, cut)
+        end
+        new_cuts[cut_type] = valid_cuts
+    end
+
+    return nothing
+end
+
 function preprocess_cuts!(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}})
     # TODO: keep stats on number of preprocessing steps, etc.
+    _preprocess_cuts_make_unique!(model, new_cuts)
     _preprocess_cuts_remove_redundant!(model, new_cuts)
-    _preprocess_cuts_stabilize_numerical_range!(model, new_cuts)
+    # _preprocess_cuts_stabilize_numerical_range!(model, new_cuts)
 
     return nothing
 end
