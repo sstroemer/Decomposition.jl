@@ -65,6 +65,36 @@ end
 end
 
 # ╒════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╕
+# │ CUTS: Minimal Infeasible Subsystem - Fischetti/Salvagnin/Zanette                                                   │
+# ╰ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶╯
+
+@kwdef struct MISFSZOptimalityCut <: AbstractGeneralCut
+    iteration::Int
+    sub_model_index::Int = -1
+    
+    cut_exp::JuMP.AffExpr
+    cut_con::JuMP.ConstraintRef
+
+    stats::Dict = Dict(
+        :abs_constant => abs(cut_exp.constant),
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+    )
+end
+
+@kwdef struct MISFSZFeasibilityCut <: AbstractGeneralCut
+    iteration::Int
+    sub_model_index::Int = -1
+    
+    cut_exp::JuMP.AffExpr
+    cut_con::JuMP.ConstraintRef
+
+    stats::Dict = Dict(
+        :abs_constant => abs(cut_exp.constant),
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+    )
+end
+
+# ╒════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╕
 # │ ATTRIBUTES: Cut Processing                                                                                         │
 # ╰ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶╯
 

@@ -82,10 +82,19 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     end
 
     # Find all cuts that were added in this iteration.
-    new_cuts = OrderedDict(
-        :feasibility => model.cuts[:feasibility][(end-nof_feas_cuts+1):end],
-        :optimality => model.cuts[:optimality][(end-nof_opt_cuts+1):end],
-    )
+    if has_attribute_type(model, Benders.CutTypeMISFSZ)
+        new_cuts = OrderedDict(
+            :feasibility => Benders.AbstractGeneralCut[],
+            :optimality => Benders.AbstractGeneralCut[],
+            :misfsz => model.cuts[:misfsz][(end-nof_feas_cuts-nof_opt_cuts+1):end],
+        )
+    else
+        new_cuts = OrderedDict(
+            :feasibility => model.cuts[:feasibility][(end-nof_feas_cuts+1):end],
+            :optimality => model.cuts[:optimality][(end-nof_opt_cuts+1):end],
+            :misfsz => Benders.AbstractGeneralCut[],
+        )
+    end
 
     # Estimate "batched" parallel processing of sub-model timings.
     # TODO: Reimplement this for TimerOutputs
@@ -118,7 +127,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
         :upper_bound => ub,
         :gap_abs => gap_abs(lb, ub),
         :gap_rel => gap_rel(lb, ub),
-        :added_cuts => OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts),
+        :added_cuts => has_attribute_type(model, Benders.CutTypeMISFSZ) ? OrderedDict(:feasibility => 0, :optimality => 0, :misfsz => nof_feas_cuts+nof_opt_cuts) : OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts, :misfsz => 0),
         :added_cuts_con => new_cuts,
     )
     push!(model.info[:history], entry)
@@ -150,8 +159,8 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
                 best_gap_rel(model),
                 Printf.@sprintf("%11.2f", total_wall_time(model) / 1e9),
                 Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
-                length(model.cuts[:feasibility]),
-                length(model.cuts[:optimality]),
+                length(model.cuts[:feasibility]) + count(c -> c isa Benders.MISFSZFeasibilityCut, model.cuts[:misfsz]),
+                length(model.cuts[:optimality]) + count(c -> c isa Benders.MISFSZOptimalityCut, model.cuts[:misfsz]),
             )
         )
     end

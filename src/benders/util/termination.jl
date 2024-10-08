@@ -40,7 +40,7 @@ function check_termination(model::Benders.DecomposedModel)
     terminate = _inner(model)
 
     if terminate
-        @info "Model statistics" lb = best_lower_bound(model) ub = best_upper_bound(model) ncuts_feas = length(model.cuts[:feasibility]) ncuts_opt = length(model.cuts[:optimality])
+        @info "Model statistics" lb = best_lower_bound(model) ub = best_upper_bound(model) ncuts_feas = length(model.cuts[:feasibility]) + count(c -> c isa Benders.MISFSZFeasibilityCut, model.cuts[:misfsz]) ncuts_opt = length(model.cuts[:optimality]) + count(c -> c isa Benders.MISFSZOptimalityCut, model.cuts[:misfsz])
     end
 
     return terminate

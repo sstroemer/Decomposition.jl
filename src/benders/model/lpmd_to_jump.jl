@@ -214,8 +214,10 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
 
             # Construct the normalization expression.
             # TODO NOTE WRITING: observe the "-1"/sign changing because the conic duality results in "<= 0" duals
-            ω_0 = -1.0  # TODO: make this a parameter
-            JuMP.@expression(dual_jump_model, expr_cglp_normalization, l1_norm_π + ω_0 * dual_jump_model.ext[:dualization_π_0])
+            # and: the scaling heavily impacts the progress of the LB, but also it may prevent a proper UB at all
+            ω_i = 1.0  # TODO: make this a parameter
+            ω_0 = 1.0e-3  # TODO: make this a parameter
+            JuMP.@expression(dual_jump_model, expr_cglp_normalization, ω_i * l1_norm_π - ω_0 * dual_jump_model.ext[:dualization_π_0])
 
             # Add the "CGLP normalization condition" (the "reduced" version as suggested).
             JuMP.@constraint(dual_jump_model, cons_cglp_normalization, expr_cglp_normalization == 1)

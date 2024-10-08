@@ -8,7 +8,7 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
 
     # TODO: why does this seem to hurt solver performance?
 
-    for cut_type in [:feasibility, :optimality]
+    for cut_type in [:feasibility, :optimality, :misfsz]
         valid_cuts = []
         for cut in new_cuts[cut_type]
             if cut_type == :optimality
@@ -68,7 +68,7 @@ function _preprocess_cuts_make_unique!(model::Benders.DecomposedModel, new_cuts:
 
     # Note: Optimality cuts contain θ and can therefore only be compared against once from the same sub-model.
 
-    for cut_type in [:feasibility, :optimality]
+    for cut_type in [:feasibility, :optimality, :misfsz]
         valid_cuts = []
         for cut in new_cuts[cut_type]
             if cut_type == :optimality

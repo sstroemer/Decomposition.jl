@@ -53,6 +53,7 @@
     cuts = OrderedDict{Symbol, Vector{AbstractGeneralCut}}(
         :feasibility => AbstractGeneralCut[],
         :optimality => AbstractGeneralCut[],
+        :misfsz => AbstractGeneralCut[],
     )
 
     log::Vector{String} = String[]

@@ -1,18 +1,21 @@
 function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractResultsSub)
-    tol = sqrt(eps(Float64))
+    tol = sqrt(eps(Float64))    # TODO
 
     @timeit model.timer "extract solution" begin
         jm = Benders.sub(model; index=query.index)
         res = model.info[:results][:subs][query.index]
 
         if has_attribute_type(model, Benders.CutTypeMISFSZ)
+            # TODO: this still fails to properly estimate an UB ...
+
             π_0 = JuMP.value(jm.ext[:dualization_π_0])
 
             if π_0 <= -tol
                 # The last cut was an "optimality" cut, so it is "feasible".
+                # NOTE: Using `abs(...)` since `π_0` may have a negative sign (if coming from conic duality).
                 res[:obj_val_primal] = res[:obj_val_dual] = (
                     JuMP.value(jm[:obj_base]) + 
-                    JuMP.value(jm[:obj_param]) / JuMP.value(jm.ext[:dualization_π_0])
+                    abs(JuMP.value(jm[:obj_param]) / JuMP.value(jm.ext[:dualization_π_0]))
                 )
 
                 # TODO: NOTE/WRITING about the comment below
@@ -25,7 +28,8 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractRe
                 # All dual variables are zero, so the modified dual is not unbounded anymore, indicating that the
                 # original primal is feasible. This allows picking the currently set value of `θ` as valid (upper bound)
                 # of the original primal's objective value.
-                res[:obj_val_primal] = res[:obj_val_dual] = first(values(jm[:obj_param_π_0].terms))
+                terms = values(jm[:obj_param_π_0].terms)
+                res[:obj_val_primal] = res[:obj_val_dual] = isempty(terms) ? 0.0 : only(terms)
             else
                 # The last cut was a "feasibility" cut, so the original dual is unbounded.
                 res[:obj_val_primal] = missing

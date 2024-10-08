@@ -1,7 +1,8 @@
 function generate_cuts(model::Benders.DecomposedModel)
     new_cuts = Dict{Symbol, Vector{Any}}(
         :feasibility => [],
-        :optimality => []
+        :optimality => [],
+        :misfsz => [],
     )
 
     _generate_cuts_from_dual(model, new_cuts)
@@ -40,18 +41,8 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
                     JuMP.add_to_expression!(exp_cut, λ, -JuMP.value(θ))
                 end
             end
-
-            # TODO: detect and "split" these into opt/feas cuts based on π_0
-
-            # # Add the violated θ to the cut.
-            # λ = JuMP.value(m_sub[:π_0])
-            # θ_current = JuMP.value(Benders.main(model)[:θ][i])
-            # JuMP.add_to_expression!(exp_cut, λ, -Benders.main(model)[:θ][i])
-            # JuMP.add_to_expression!(exp_cut, λ, θ_current)
-            # # TODO: should the sign be reversed?
-
-            push!(new_cuts[:feasibility], (i, exp_cut))
-        elseif false && gen_feas_cuts && !gen_misfsz_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
+            push!(new_cuts[:misfsz], (i, exp_cut))
+        elseif gen_feas_cuts && !gen_misfsz_cuts && JuMP.primal_status(m_sub) == MOI.INFEASIBILITY_CERTIFICATE
             # Primal unbounded => construct a feasibility cut from the ray.
             exp_cut = JuMP.AffExpr(JuMP.value(m_sub[:obj_base]))
             for elem in m_sub.ext[:dualization_obj_param]
@@ -64,7 +55,7 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
             push!(new_cuts[:feasibility], (i, exp_cut))
-        elseif false && gen_opt_cuts && JuMP.termination_status(m_sub) == MOI.OPTIMAL && JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
+        elseif gen_opt_cuts && JuMP.termination_status(m_sub) == MOI.OPTIMAL && JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
             exp_cut = JuMP.AffExpr(
                 JuMP.dual_status(m_sub) == MOI.FEASIBLE_POINT ? JuMP.dual_objective_value(m_sub) : JuMP.objective_value(m_sub)
             )

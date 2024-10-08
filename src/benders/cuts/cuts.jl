@@ -18,58 +18,30 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.AbstractCutTy
 end
 
 function apply!(model::Benders.DecomposedModel, attribute::Benders.CutTypeMISFSZ)
-    return true # TODO
-    # if has_attribute_type(model, Benders.AbstractFeasibilityCutType)
-    #     @error "Active cut type `MISFSZ` cannot be used with general feasibility cuts"
-    #     return false
-    # end
+    if has_attribute_type(model, Benders.AbstractFeasibilityCutType)
+        @error "Active cut type `MISFSZ` cannot be used with general feasibility cuts"
+        return false
+    end
 
-    # if has_attribute_type(model, Benders.AbstractOptimalityCutType)
-    #     @error "Active cut type `MISFSZ` cannot be used with general optimality cuts"
-    #     return false
-    # end
+    if has_attribute_type(model, Benders.AbstractOptimalityCutType)
+        @error "Active cut type `MISFSZ` cannot be used with general optimality cuts"
+        return false
+    end
 
-    # for jm in Benders.subs(model)
-    #     if !get(jm.ext, :dualization_is_dualized, false)
-    #         @error "Active cut type `MISFSZ` requires the sub-models to be dualized"
-    #         return false
-    #     end
+    for jm in Benders.subs(model)
+        if !get(jm.ext, :dualization_is_dualized, false)
+            @error "Active cut type `MISFSZ` requires the sub-models to be dualized"
+            return false
+        end
+    end
 
-    #     # TODO: Make that a parameter
-    #     ω_0 = 1.0
+    # Finally, we need the standard θ variables in the main-model (if not already constructed).
+    if !haskey(Benders.main(model), :θ)
+        JuMP.@variable(Benders.main(model), θ[i = eachindex(Benders.subs(model))])
+        JuMP.set_lower_bound.(θ, -1e4)           # TODO
+    end
 
-    #     # Add the π_0 variable to the sub-model.
-    #     JuMP.@variable(jm, π_0 >= 0)
-
-    #     # Multiply `d` (RHS) with `π_0`.
-    #     # TODO: is it safe to leave out the `x >= ...` and `x <= ...` constraints?
-    #     cons = JuMP.all_constraints(jm; include_variable_in_set_constraints = false)
-    #     for con in cons
-    #         co = JuMP.constraint_object(con)
-
-    #         rhs = (co.set isa MOI.EqualTo) ? co.set.value : ((co.set isa MOI.LessThan) ? co.set.upper : co.set.lower)
-    #         # JuMP.set_normalized_coefficient(con, π_0, -rhs)
-    #         # JuMP.set_normalized_rhs(con, 0)           
-    #     end
-
-    #     # Add the "CGLP normalization condition" (the "reduced" version as suggested).
-    #     JuMP.@constraint(
-    #         jm,
-    #         cglp_normalization,
-    #         sum(elem[2] for elem in jm.ext[:dualization_obj_param]) + ω_0 * π_0 == 1
-    #     )
-
-    #     # Construct the additional objective term.
-    #     jm[:obj_misfsz] = JuMP.AffExpr(0.0)
-    # end
-
-    # # Finally, we need the standard θ variables in the main-model (if not already constructed).
-    # if !haskey(Benders.main(model), :θ)
-    #     JuMP.@variable(Benders.main(model), θ[i = eachindex(Benders.subs(model))])
-    #     JuMP.set_lower_bound.(θ, -1e4)           # TODO
-    # end
-
-    # return true
+    return true
 end
 
 # Cut processing is done as "flag" and is never "applied" to the model.
@@ -92,12 +64,44 @@ function add_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{
 
     if !isempty(new_cuts[:feasibility])
         # Use the "last", the currently active, cut type specfication.
-        nof_added_feas_cuts = _add_feasibility_cuts(model, new_cuts, get_attributes(model, Benders.AbstractFeasibilityCutType)[end])
+        nof_added_feas_cuts = _add_feasibility_cuts(model, new_cuts, get_attribute(model, Benders.AbstractFeasibilityCutType))
     end
 
     if !isempty(new_cuts[:optimality])
         # Use the "last", the currently active, cut type specfication.
-        nof_added_opt_cuts = _add_optimality_cuts(model, new_cuts, get_attributes(model, Benders.AbstractOptimalityCutType)[end])
+        nof_added_opt_cuts = _add_optimality_cuts(model, new_cuts, get_attribute(model, Benders.AbstractOptimalityCutType))
+    end
+
+    if !isempty(new_cuts[:misfsz])
+        # Use the "last", the currently active, cut type specfication.
+        nof_added_feas_cuts, nof_added_opt_cuts = _add_misfsz_cuts(model, new_cuts, get_attribute(model, Benders.CutTypeMISFSZ))
+    end
+
+    return nof_added_feas_cuts, nof_added_opt_cuts
+end
+
+function _add_misfsz_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.CutTypeMISFSZ)
+    nof_added_feas_cuts = 0
+    nof_added_opt_cuts = 0
+
+    for (i, exp_cut) in new_cuts[:misfsz]
+        if abs(get(exp_cut.terms, Benders.main(model)[:θ][i], 0.0)) > 0
+            CutGenerator = Benders.MISFSZOptimalityCut
+            nof_added_opt_cuts += 1
+        else
+            CutGenerator = Benders.MISFSZFeasibilityCut
+            nof_added_feas_cuts += 1
+        end
+
+        push!(
+            model.cuts[:misfsz],
+            CutGenerator(
+                iteration = current_iteration(model),
+                sub_model_index = i,
+                cut_exp = exp_cut,
+                cut_con = JuMP.@constraint(Benders.main(model), exp_cut <= 0)
+            )
+        )
     end
 
     return nof_added_feas_cuts, nof_added_opt_cuts

@@ -24,8 +24,8 @@ const GRB_ENV = Gurobi.Env()
 # T2184 => obj::5.821398080e+06
 # T4368 => obj::1.114810594e+07
 
-T = 2184
-n = 26
+T = 744
+n = 12
 jump_model = jump_model_from_file("national_scale_$T.mps")
 # jump_model = jump_model_from_file("ehighways_3h_west_$T.mps")
 
@@ -54,11 +54,11 @@ Decomposition.set_attribute.(model, [
     Benders.Config.NumberOfTemporalBlocks(n),
 
     Solver.AlgorithmIPM(model = :main),
-    Solver.ExtractDualRay(model = :sub),
+    # Solver.ExtractDualRay(model = :sub),
     Solver.DualizeModel(model = :sub),     # TODO: seems to be not passing any starting values, so super slow, consider "manually" formulating the dual instead of using the dual optimizer
 
-    Benders.FeasibilityCutTypeMulti(),
-    Benders.OptimalityCutTypeMulti(),
+    # Benders.FeasibilityCutTypeMulti(),
+    # Benders.OptimalityCutTypeMulti(),
     Benders.CutTypeMISFSZ(),
 
     # TODO: currently the cut-type constructs θ, which is needed for the objectives below
@@ -70,14 +70,14 @@ Decomposition.set_attribute.(model, [
     # Benders.Sub.RelaxationLinked(),     # TODO: this fails if it is called before the objectives - fix this!
 
     Benders.Main.VirtualSoftBounds(0.0, 1e6),
-    # Benders.Main.RegularizationLevelSet(alpha = 0.25, infeasible_alpha_step = 0.25),
+    # Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2),
 
     # These two may help HiGHS, but may (considerably) hurt Gurobi
-    # Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-20, rtol_const=1e-20),     # TODO WRITING NOTE: this seems to hurt with strict tolerances, and help with looser ones (??); for HiGHS
-    # Benders.CutPreprocessingMakeUnique(rtol_coeff=1e-4, rtol_const=1e-4),          # TODO WRITING NOTE: this seems to help also for Gurobi
+    # Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-8, rtol_const=1e-8),     # TODO WRITING NOTE: this seems to hurt with strict tolerances, and help with looser ones (??); for HiGHS
+    Benders.CutPreprocessingMakeUnique(rtol_coeff=1e-4, rtol_const=1e-4),          # TODO WRITING NOTE: this seems to help also for Gurobi
     # Benders.CutPreprocessingStabilizeNumericalRange(const_factor_threshold=1e10, const_factor_elimination_max_rel_delta=1e-4),
 
-    Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 50000),
+    Benders.Termination.Stop(opt_gap_rel = 1e-2, iterations = 100),
 ]);
 
 # @profview generate_annotation(model, Calliope())
@@ -118,6 +118,9 @@ Decomposition.set_attribute.(model, [
 # end
 
 # TODO: CHECK!!!!!
+# https://optimization-online.org/wp-content/uploads/2019/12/7506.pdf
+
+# TODO WRITING
 # http://www.dei.unipd.it/~fisch/papers/Benders_mis_extended_draft.pdf
 # [...] was proposed by Benders
 #   himself in his seminal paper [5]: if we solve the dual slave with the primal
@@ -127,10 +130,16 @@ Decomposition.set_attribute.(model, [
 # Also: Much better explanation of MISFSZ cuts => Section 4
 # Also: Notes on stability of normalization constraint => end of Section 4
 # Also: [...] it is not difficult to see that π/π0 gives an optimal [...]  ===>>> Erklärung für UB reconstruction?
+# => re-optimize with primal simplex (> warm-start) [https://www.math.uwaterloo.ca/~bico/bellairs/Benders.pdf   end of Section 4]
+# And: mention mis2, generating a feas. cut for each opt. cut, by re-optimizing (quickly) with warmstart [https://www.math.uwaterloo.ca/~bico/bellairs/Benders.pdf]
 
-# => re-optimize with primal simplex (> warm-start)
+# TODO: log # of models currently feasible
 
-# TODO: add MISFSZ cuts (opt & feas) to the log printing, and a # of models currently feasible
+# TODO WRITING
+# Tested with: national_scale, T=2184, n=24
+# > the primal simplex is way faster, but doesn't find a "converged" UB in 100 iterations
+# > using the dual simplex instead (more stable?) leads to a converged UB, already after 70 iterations, but takes way longer for that
+# > with gurobi (note: that was with activated "dualray" extraction settings)
 
 finalize!(model)
 
