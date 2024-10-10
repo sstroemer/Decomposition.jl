@@ -217,6 +217,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
             # and: the scaling heavily impacts the progress of the LB, but also it may prevent a proper UB at all
             ω_i = 1.0  # TODO: make this a parameter
             ω_0 = 1.0e-3  # TODO: make this a parameter
+            # TODO: it may be more consistent, using the pos/neg split also for ω_0, and then removing the "-"
             JuMP.@expression(dual_jump_model, expr_cglp_normalization, ω_i * l1_norm_π - ω_0 * dual_jump_model.ext[:dualization_π_0])
 
             # Add the "CGLP normalization condition" (the "reduced" version as suggested).
