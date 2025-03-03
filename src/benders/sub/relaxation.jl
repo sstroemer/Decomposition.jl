@@ -28,16 +28,16 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
         attribute.index == -1 || attribute.index == i || continue
 
         m_sub = Benders.sub(model; index=i)
-        vis_main_in_sub = [vi for vi in vis_main if vi in m_sub[:x].axes[1]]
+        vis_main_in_sub = [vi for vi in vis_main if vi in m_sub[:y].axes[1]]
 
         JuMP.@variable(m_sub, z_pos[i = vis_main_in_sub], lower_bound = 0)
         JuMP.@variable(m_sub, z_neg[i = vis_main_in_sub], lower_bound = 0)
 
         all_con = JuMP.all_constraints(m_sub; include_variable_in_set_constraints = false)
 
-        exp_penalty = JuMP.AffExpr(0.0)   
+        exp_penalty = JuMP.AffExpr(0.0)
         for vi in vis_main_in_sub
-            coeffs = JuMP.normalized_coefficient.(all_con, m_sub[:x][vi])
+            coeffs = JuMP.normalized_coefficient.(all_con, m_sub[:y][vi])
             JuMP.set_normalized_coefficient.(all_con, z_pos[vi], coeffs)
             JuMP.set_normalized_coefficient.(all_con, z_neg[vi], -coeffs)
 
@@ -59,7 +59,7 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
         attribute.index == -1 || attribute.index == i || continue
 
         m_sub = sub(model; index=i)
-        vis_main_in_sub = [vi for vi in vis_filtered_main if vi in m_sub[:x].axes[1]]
+        vis_main_in_sub = [vi for vi in vis_filtered_main if vi in m_sub[:y].axes[1]]
 
         JuMP.@variable(m_sub, z_pos[i = vis_main_in_sub], lower_bound = 0)
         JuMP.@variable(m_sub, z_neg[i = vis_main_in_sub], lower_bound = 0)
@@ -68,7 +68,7 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.Relaxatio
 
         exp_penalty = JuMP.AffExpr(0.0)   
         for vi in vis_main_in_sub
-            coeffs = JuMP.normalized_coefficient.(all_con, m_sub[:x][vi])
+            coeffs = JuMP.normalized_coefficient.(all_con, m_sub[:y][vi])
             JuMP.set_normalized_coefficient.(all_con, z_pos[vi], coeffs)
             JuMP.set_normalized_coefficient.(all_con, z_neg[vi], -coeffs)
 
