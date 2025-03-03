@@ -1,4 +1,4 @@
-function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)   
+function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
     @timeit model.timer "main" begin
         @timeit model.timer "optimize" execute!(model, Benders.Query.SolveMain())
         @timeit model.timer "extract solution" execute!(model, Benders.Query.ExtractResultsMain())
