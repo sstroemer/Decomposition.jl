@@ -36,7 +36,7 @@ function compare(hashes::Vector{String}, f_trace::Union{Function, Vector{Functio
     open("out/figures/$(html).html", "w") do io
         PlotlyBase.to_html(io, p.plot)
     end
-    return plot
+    return p
 end
 
 function trace_rel_gap(model_info::Dict)

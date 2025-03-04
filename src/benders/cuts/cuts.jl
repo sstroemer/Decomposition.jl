@@ -85,6 +85,7 @@ function _add_misfsz_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol,
     nof_added_opt_cuts = 0
 
     for (i, exp_cut) in new_cuts[:misfsz]
+        # TODO: this check fails if θ is set to zero by the main and that being "optimal" (any cut could still be an optimality cut if π_0 > 0)
         if abs(get(exp_cut.terms, Benders.main(model)[:θ][i], 0.0)) > 0
             CutGenerator = Benders.MISFSZOptimalityCut
             nof_added_opt_cuts += 1

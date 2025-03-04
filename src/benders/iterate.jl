@@ -2,6 +2,8 @@ function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
     @timeit model.timer "main" begin
         @timeit model.timer "optimize" execute!(model, Benders.Query.SolveMain())
         @timeit model.timer "extract solution" execute!(model, Benders.Query.ExtractResultsMain())
+
+        @timeit model.timer "cuts (postprocess)" postprocess_cuts!(model)
         nothing
     end
 
@@ -48,7 +50,6 @@ function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
         new_cuts = @timeit model.timer "cuts (generate)" generate_cuts(model)
         @timeit model.timer "cuts (preprocess)" preprocess_cuts!(model, new_cuts)
         added_cuts = @timeit model.timer "cuts (add)" add_cuts(model, new_cuts)
-        @timeit model.timer "cuts (postprocess)" postprocess_cuts!(model)
 
         added_cuts
     end
@@ -59,7 +60,7 @@ function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
     return check_termination(model)
 end
 
-function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bool=true, assumed_pcores::Int = 16)
+function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bool=get_attribute(model, Benders.Config.ModelVerbosity).verbosity > 1, assumed_pcores::Int = 16)
     nof_feas_cuts, nof_opt_cuts = added_cuts
     iter = current_iteration(model)
     curr_time = time_ns()

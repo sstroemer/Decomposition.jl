@@ -10,12 +10,12 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractRe
 
             π_0 = JuMP.value(jm.ext[:dualization_π_0])
 
-            if π_0 <= -tol
+            if abs(π_0) > tol
                 # The last cut was an "optimality" cut, so it is "feasible".
                 # NOTE: Using `abs(...)` since `π_0` may have a negative sign (if coming from conic duality).
                 res[:obj_val_primal] = res[:obj_val_dual] = (
                     JuMP.value(jm[:obj_base]) + 
-                    abs(JuMP.value(jm[:obj_param]) / JuMP.value(jm.ext[:dualization_π_0]))
+                    JuMP.value(jm[:obj_param_π_0]) / π_0  # TODO: or should it be `obj_param` here?
                 )
 
                 # TODO: NOTE/WRITING about the comment below

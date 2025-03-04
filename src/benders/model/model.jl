@@ -21,6 +21,18 @@ function apply!(model::Benders.DecomposedModel, attribute::Solver.AbstractAttrib
 end
 
 function finalize!(model::Benders.DecomposedModel)
+    verbosity = get_attribute(model, Benders.Config.ModelVerbosity).verbosity
+
+    if verbosity >= 4
+        Logging.global_logger(Logging.ConsoleLogger(stdout, Logging.Debug))
+    elseif verbosity >= 3
+        Logging.global_logger(Logging.ConsoleLogger(stdout, Logging.Info))
+    elseif verbosity >= 1
+        Logging.global_logger(Logging.ConsoleLogger(stdout, Logging.Warn))
+    else
+        Logging.global_logger(Logging.ConsoleLogger(stdout, Logging.Error))
+    end
+
     # Construct & apply all annotations if this is called for the first time.
     if isempty(model.models)
         @timeit model.timer "annotations (generate)" annotate!(model)
@@ -30,6 +42,9 @@ function finalize!(model::Benders.DecomposedModel)
     # Apply all attributes, that are flagged as dirty.
     for ac in model.attributes
         ac.dirty || continue
+
+        # Skip all "not-to-apply" attributes.
+        (ac.attribute isa Benders.Config.ModelVerbosity) && continue
 
         ret = @timeit model.timer "apply attributes" apply!(model, ac.attribute)
         if !ret

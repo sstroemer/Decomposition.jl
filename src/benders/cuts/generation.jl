@@ -38,6 +38,7 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
                     λ = JuMP.value(m_sub.ext[:dualization_π_0])
                     θ = Benders.main(model)[:θ][i]
                     JuMP.add_to_expression!(exp_cut, λ, θ)
+                    # TODO: based on http://www.dei.unipd.it/~fisch/papers/Benders_mis_extended_draft.pdf, the next line should not be used, correct?
                     JuMP.add_to_expression!(exp_cut, λ, -JuMP.value(θ))
                 end
             end

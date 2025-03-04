@@ -113,3 +113,9 @@ end
     const_factor_threshold::Float64                  # e.g., 1e10
     const_factor_elimination_max_rel_delta::Float64  # e.g., 1e-4
 end
+
+@kwdef struct CutPostprocessingDropNonBinding <: AbstractCutProcessing
+    iterations::Int64
+    threshold::Float64 = 1e-5
+    _nonbinding::Dict{Symbol, Vector{Int64}} = Dict()
+end

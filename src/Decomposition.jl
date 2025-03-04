@@ -9,6 +9,7 @@ import Graphs
 import JSON3
 import SHA
 import Printf
+import Logging
 using TimerOutputs
 
 const MOI = JuMP.MOI
