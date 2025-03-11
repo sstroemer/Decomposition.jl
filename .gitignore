@@ -49,3 +49,9 @@ python/
 
 # Output files.
 out/
+
+# Cached models.
+*.djl.json
+*.nl
+*.mof
+*.mof.json
