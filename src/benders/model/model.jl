@@ -40,17 +40,23 @@ function finalize!(model::Benders.DecomposedModel)
     end
 
     # Apply all attributes, that are flagged as dirty.
-    for ac in model.attributes
-        ac.dirty || continue
+    @timeit model.timer "apply attributes" begin
+        for ac in model.attributes
+            ac.dirty || continue
 
-        # Skip all "not-to-apply" attributes.
-        (ac.attribute isa Benders.Config.ModelVerbosity) && continue
+            # Skip all "not-to-apply" attributes.
+            (ac.attribute isa Benders.Config.ModelVerbosity) && continue
 
-        ret = @timeit model.timer "apply attributes" apply!(model, ac.attribute)
-        if !ret
-            @error "Failed to apply attribute" model_type = typeof(model) attribute = ac.attribute
-        else
-            ac.dirty = false
+            # Prepare the attribute name for timing purposes.
+            an = string(ac.attribute)
+            an = String(rsplit(split(an, "(")[1], "."; limit=2)[end])
+
+            ret = @timeit model.timer an apply!(model, ac.attribute)
+            if !ret
+                @error "Failed to apply attribute" model_type = typeof(model) attribute = ac.attribute
+            else
+                ac.dirty = false
+            end
         end
     end
 
