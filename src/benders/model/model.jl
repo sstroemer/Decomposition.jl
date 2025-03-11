@@ -20,7 +20,7 @@ function apply!(model::Benders.DecomposedModel, attribute::Solver.AbstractAttrib
     return ret
 end
 
-function finalize!(model::Benders.DecomposedModel)
+function finalize!(model::Benders.DecomposedModel; cb_post_annotate = nothing)
     verbosity = get_attribute(model, Benders.Config.ModelVerbosity).verbosity
 
     if verbosity >= 4
@@ -36,6 +36,7 @@ function finalize!(model::Benders.DecomposedModel)
     # Construct & apply all annotations if this is called for the first time.
     if isempty(model.models)
         @timeit model.timer "annotations (generate)" annotate!(model)
+        isnothing(cb_post_annotate) || cb_post_annotate(model)
         @timeit model.timer "annotations (apply)" apply_annotations!(model)
     end
 
