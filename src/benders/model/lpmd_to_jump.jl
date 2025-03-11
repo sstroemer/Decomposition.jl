@@ -38,7 +38,7 @@ function lpmd_to_jump(model::DecomposedModel, vis::Vector{Int64}, cis::Vector{In
             # JuMP.Model(Dualization.dual_optimizer(() -> optimizer))
             JuMP.Model()
         else
-            cfg_direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer)
+            cfg_direct_mode ? JuMP.direct_model(optimizer) : JuMP.Model(() -> optimizer; add_bridges=false)
         end
     )
     
