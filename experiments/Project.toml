@@ -1,0 +1,8 @@
+[deps]
+Decomposition = "d4dfb27b-861c-4425-ac1a-a7246d2447ee"
+Gurobi = "2e9cd046-0924-5485-92f1-d5272153d98b"
+HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
