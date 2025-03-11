@@ -8,7 +8,7 @@ const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIM
 const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 
 const PARALLELIZATION = 16
-const ts = [1, 2, 4, 8, 24, 31, 62]
+const ts = [1, 8, 24, 39, 84]
 y = Dict(
     n => Dict{String, Any}(
         "iter" => [],
@@ -37,7 +37,7 @@ for r in RUNS
         tsub = Dict(k => v[:inner_timers][:optimize][:time_ns] for (k, v) in tis)
         tsub_aux = Dict(sk => sum(v[:time_ns] for (k, v) in sv[:inner_timers] if k != :optimize) for (sk, sv) in tis)
 
-        push!(y[n]["iter"], iter)
+        push!(y[n]["iter"], Float64(iter))
         push!(y[n]["tmain_opt"], tmain)
         push!(y[n]["tmain_aux"], tmain_aux)
 

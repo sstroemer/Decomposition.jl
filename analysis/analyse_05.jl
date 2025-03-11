@@ -8,7 +8,7 @@ const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIM
 const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-const examples = ["ex1", "ex2", "ex3", "ex4", "ex5"]
+const examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6"]
 y = Dict(e => Dict{String, Any}("lb" => nothing, "ub" => nothing) for e in examples)
 
 # Extract results.
@@ -56,9 +56,9 @@ end
 # Plot.
 function make_plot(ex)
     x = xmin:xmax
-    colors = ["#0026ff", "#ff4800"]
+    colors = ["#0026ff", "#ff4800", "#ffa480"]
     legend_entries =
-        Dict("ex1" => "baseline", "ex2" => "bounded variables", "ex3" => "baseline", "ex4" => "bounded variables", "ex5" => "regularization")
+        Dict("ex1" => "baseline", "ex2" => "bounded variables", "ex3" => "baseline", "ex4" => "bounded variables", "ex5" => "baseline", "ex6" => "bounded variables")
 
     traces = Vector{PlotlyJS.GenericTrace}()
     push!(
@@ -125,5 +125,6 @@ function make_plot(ex)
     )
 end
 
-savefig(make_plot(examples[1:2]), joinpath(RUN_DIR, "simplex.svg"), width = 600, height = 500)
-savefig(make_plot(examples[3:5]), joinpath(RUN_DIR, "ipm.svg"), width = 600, height = 500)
+savefig(make_plot(examples[1:2]), joinpath(RUN_DIR, "simplex.svg"), width = 450, height = 550)
+savefig(make_plot(examples[3:4]), joinpath(RUN_DIR, "ipm.svg"), width = 450, height = 550)
+savefig(make_plot(examples[5:6]), joinpath(RUN_DIR, "stabilized.svg"), width = 450, height = 550)
