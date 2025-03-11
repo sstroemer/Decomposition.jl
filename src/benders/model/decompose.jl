@@ -87,6 +87,14 @@ function apply_annotations!(model::Benders.DecomposedModel)
         push!(model.models, Benders.lpmd_to_jump(model, vis_sub[i], cis_sub[i]; name="sub_$i", optimizer=model.f_opt_sub()))
     end
 
+    # Cache the variable indices in main that link to a specific sub-model.
+    set_vis_main = Set(vis_main)
+    model.annotations[:linking_variables] = Dict()
+    for i in eachindex(vis_sub)
+        # TODO: relax the dict typing in the model definition to directly use `i` here as key
+        model.annotations[:linking_variables][Symbol(i)] = intersect(Set(vis_sub[i]), set_vis_main)
+    end
+
     # Create empty results dictionary.
     model.info[:results] = OrderedDict{Symbol, Any}(
         :main => OrderedDict{Symbol, Any}(),
