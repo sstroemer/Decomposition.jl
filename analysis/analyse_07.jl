@@ -9,7 +9,7 @@ const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
 const examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6", "baseline"]
-y = Dict(e => Dict{String, Any}("iter" => 0, "main" => 0.0, "main_aux" => 0.0, "sub" => 0.0) for e in examples)
+y = Dict(e => Dict{String, Any}("iter" => 0, "main" => 0.0, "main_aux" => 0.0, "sub" => 0.0, "sub_aux" => 0.0) for e in examples)
 
 # Extract results.
 for r in RUNS
@@ -17,19 +17,27 @@ for r in RUNS
 
     for e in examples
         timings = JSON3.read(joinpath(dir, "timer_$(e).json"))
+        
         mit = timings[:inner_timers][:main][:inner_timers]
         y[e]["iter"] += mit[:optimize][:n_calls]
         y[e]["main"] += mit[:optimize][:time_ns]
         y[e]["main_aux"] += sum(v[:time_ns] for (k, v) in mit if k != :optimize)
+
+        sit = timings[:inner_timers][:sub][:inner_timers]
+        worst = argmax(Dict(k => v[:time_ns] for (k, v) in sit))
+        y[e]["sub"] += sit[worst][:inner_timers][:optimize][:time_ns]
+        y[e]["sub_aux"] += sum(v[:time_ns] for (k, v) in sit[worst][:inner_timers] if k != :optimize)
     end
 end
 
 # Average results (over all runs [already included in baseline], then down to "per iteration"), normalize to baseline.
 baseline_iter = y["baseline"]["iter"] / 100.
-baseline = (y["baseline"]["main"] + y["baseline"]["main_aux"]) / y["baseline"]["iter"] / 100.
+baseline = sum(v for (k, v) in y["baseline"] if k != "iter") / y["baseline"]["iter"] / 100.
 for e in examples
     y[e]["main"] /= baseline * y[e]["iter"]
     y[e]["main_aux"] /= baseline * y[e]["iter"]
+    y[e]["sub"] /= baseline * y[e]["iter"]
+    y[e]["sub_aux"] /= baseline * y[e]["iter"]
     y[e]["iter"] /= baseline_iter
 end
 
@@ -66,6 +74,7 @@ function make_plot(traces, layout)
             borderwidth = 1,
             xanchor = "right",
             yanchor = "top",
+            orientation = "h",
         ),
         :plot_bgcolor => "white",
         :paper_bgcolor => "white",
@@ -76,9 +85,24 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
+names = Dict(
+    "baseline" => "opt. cuts only",
+    "ex1" => "opt. & feas. cuts",
+    "ex2" => "opt. & feas. + merge small",
+    "ex3" => "opt. & feas. + merge all",
+    "ex4" => "opt. & feas. cuts + 1sub",
+    "ex5" => "opt. & feas. + merge small + 1sub",
+    "ex6" => "opt. & feas. + merge all + 1sub",
+)
+
 exs = sort(examples; rev=true)
+yn = [names[e] for e in exs]
+
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] for e in exs], y = exs, marker_color = "#0f4800", orientation="h", name="main-model (time overhead)", offsetgroup=1))
-push!(traces, bar(; x = [y[e]["main"] for e in exs], y = exs, marker_color = "#ff4800", orientation="h", name="main-model (time solve)", offsetgroup=1))
-push!(traces, bar(; x = [y[e]["iter"] for e in exs], y = exs, marker_color = "#0f48aa", orientation="h", name="main-model (iterations)", offsetgroup=2))
-savefig(make_plot(traces, (barmode = "group", xaxis_title = "iterations / time compared to baseline (%)",)), joinpath(RUN_DIR, "fig.svg"), width = 900, height = 450)
+push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] + y[e]["sub_aux"] + y[e]["sub"] for e in exs], y = yn, marker_color = "#7ea15c", orientation="h", name="time (overhead)", offsetgroup=1, legendgrouptitle = PlotlyJS.attr(; text = "sub (worst)"), legendgroup = "sub"))
+push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] + y[e]["sub"] for e in exs], y = yn, marker_color = "#458a00", orientation="h", name="time (solve)", legendgrouptitle = PlotlyJS.attr(; text = "sub (worst)"), legendgroup = "sub", offsetgroup=1))
+push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] for e in exs], y = yn, marker_color = "#b85c5c", orientation="h", name="time (overhead)", offsetgroup=1, legendgrouptitle = PlotlyJS.attr(; text = "main"), legendgroup = "main"))
+push!(traces, bar(; x = [y[e]["main"] for e in exs], y = yn, marker_color = "#b80000", orientation="h", name="time (solve)", legendgrouptitle = PlotlyJS.attr(; text = "main"), legendgroup = "main", offsetgroup=1))
+push!(traces, bar(; x = [y[e]["iter"] for e in exs], y = yn, marker_color = "#0f48aa", orientation="h", name="iterations", legendgrouptitle = PlotlyJS.attr(; text = "general"), legendgroup = "general", offsetgroup=2))
+savefig(make_plot(traces, (barmode = "group", xaxis_title = "iterations / time compared to baseline (%)",)), joinpath(RUN_DIR, "fig.svg"), width = 900, height = 400)
+
