@@ -1,10 +1,18 @@
-using JuMP: JuMP
-import HiGHS, Gurobi
+# Run N times:
+# julia --project=experiments experiments/03_dropping_cuts.jl
+
+import TimerOutputs, JSON3, UUIDs
+import JuMP, HiGHS, Gurobi
 using Decomposition
 
-const GRB_ENV = Gurobi.Env()
 
-function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int64)
+const GRB_ENV = Gurobi.Env()
+const EXPERIMENT = split(basename(@__FILE__), ".")[1]
+const EXPERIMENT_UUID = string(UUIDs.uuid4())
+const RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
+
+
+function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
     model = Benders.DecomposedModel(;
         jump_model,
         annotator = Calliope(),
@@ -12,7 +20,14 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
         f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),
     )
 
-    set_attribute.(model, attributes)
+    if drop > 0
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold=1e-8))
+    elseif drop == -1
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-3, rtol_const=1e-3))
+    elseif drop < -1
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-3, rtol_const=1e-3))
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold=1e-8))
+    end
 
     set_attribute.(
         model,
@@ -20,7 +35,7 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
             Benders.Config.TotalTimesteps(T),
             Benders.Config.NumberOfTemporalBlocks(n),
             Benders.Config.ModelVerbosity(1),
-            Benders.Config.ModelDirectMode(; enable = true),
+            Benders.Config.ModelDirectMode(; enable = false),
             Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
@@ -39,23 +54,17 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
 end
 
 # Make sure everything's compiled using a small model first.
-model = experiment(
-    jump_model_from_file("national_scale_120.mps"),
-    [Benders.CutPostprocessingDropNonBinding(; iterations = 50)];
-    T = 120,
-    n = 3,
-)
-
-# Load JuMP model.
-jump_model = jump_model_from_file("national_scale_744.mps")
-
-# Now run the experiment.
-for drop in [30, 90] # 20:10:90
-    model = experiment(jump_model, [Benders.CutPostprocessingDropNonBinding(; iterations = drop)]; T = 744, n = 12)
-
-    iter = current_iteration(model)
-    time = round(model.timer["main"].accumulated_data.time / 1e6 / iter; digits = 2)
-    println("drop = $(drop) \t :: \t iterations = $(iter) \t | \t avg_time_main = $(time)ms")
+for drop in [-75, -1, 0, 75]
+    experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop)
 end
 
-# NOTE: `drop <= 15` fails to converge in `<= 500` iterations
+# Load JuMP model.
+jump_model = jump_model_from_file("national_scale_2184.mps")
+
+# Now run the experiment.
+for drop in [-75, -50, -40, -35, -30, -1, 0]
+    model = experiment(jump_model; T = 2184, n = 42, drop)
+
+    # Write results.
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer))
+end
