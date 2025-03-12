@@ -32,7 +32,7 @@ function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Floa
             Benders.Sub.RelaxationLinked(; penalty),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2),
+            Benders.Main.RegularizationLevelSet(alpha = 0.5, infeasible_alpha_step = 0.2),
             Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 1000),
         ],
     )
@@ -47,7 +47,7 @@ end
 
 # Make sure everything's compiled using a small model first.
 experiment(jump_model_from_file("national_scale_120.mps"), () -> Gurobi.Optimizer(GRB_ENV); T = 120, n = 3, penalty = 1e6)
-# experiment(jump_model_from_file("national_scale_120.mps"), () -> HiGHS.Optimizer(); T = 120, n = 3, penalty = 1e6)
+experiment(jump_model_from_file("national_scale_120.mps"), () -> HiGHS.Optimizer(); T = 120, n = 3, penalty = 1e6)
 
 # Load JuMP model.
 jump_model = jump_model_from_file("national_scale_744.mps")
@@ -73,9 +73,9 @@ for i in 0:50
         break
     end
 
-    # model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 744, n = 8, penalty = π)
+    model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 744, n = 8, penalty = π)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer))
-    # JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer))
+    JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer))
 end
