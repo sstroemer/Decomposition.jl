@@ -43,7 +43,8 @@ DOI 10.1007/s10107-010-0365-7
 
     stats::Dict = Dict(
         :abs_constant => abs(cut_exp.constant),
-        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0)),
+        :nonbinding => 0
     )
 end
 
@@ -60,7 +61,8 @@ end
 
     stats::Dict = Dict(
         :abs_constant => abs(cut_exp.constant),
-        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0)),
+        :nonbinding => 0
     )
 end
 
@@ -77,7 +79,8 @@ end
 
     stats::Dict = Dict(
         :abs_constant => abs(cut_exp.constant),
-        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0)),
+        :nonbinding => 0
     )
 end
 
@@ -90,7 +93,8 @@ end
 
     stats::Dict = Dict(
         :abs_constant => abs(cut_exp.constant),
-        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0))
+        :range_coeff => extrema(abs.(cut_exp.terms.vals); init=(0.0, 0.0)),
+        :nonbinding => 0
     )
 end
 

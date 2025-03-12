@@ -11,13 +11,17 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
     total_valid_cuts = 0
     total_raw_cuts = 0
 
+    opt_sub_map = Dict(i => [] for i in 1:(length(model.models)-1))
+    for c in reverse(model.cuts[:optimality])
+        push!(opt_sub_map[c.sub_model_index], c.cut_exp)
+    end
+
     for cut_type in [:feasibility, :optimality, :misfsz]
         valid_cuts = []
         for cut in new_cuts[cut_type]
             if cut_type == :optimality
                 any(
-                    jump_expressions_equal(cut[2], other.cut_exp; tol...) for other in model.cuts[:optimality]
-                    if cut[1] == other.sub_model_index
+                    jump_expressions_equal(cut[2], other; tol...) for other in opt_sub_map[cut[1]]
                 ) && continue
             else
                 any(jump_expressions_equal(cut[2], other.cut_exp; tol...) for other in model.cuts[cut_type]) && continue
