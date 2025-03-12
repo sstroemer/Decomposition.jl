@@ -8,6 +8,9 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
 
     # TODO: why does this seem to hurt solver performance?
 
+    total_valid_cuts = 0
+    total_raw_cuts = 0
+
     for cut_type in [:feasibility, :optimality, :misfsz]
         valid_cuts = []
         for cut in new_cuts[cut_type]
@@ -22,7 +25,27 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
             push!(valid_cuts, cut)
         end
 
+        total_valid_cuts += length(valid_cuts)
+        total_raw_cuts += length(new_cuts[cut_type])
+
         new_cuts[cut_type] = valid_cuts
+    end
+
+    # TODO: make that configurable
+    τ = 0.25  # reduce by how much?
+    π = 0.50  # when?
+    if total_valid_cuts < total_raw_cuts * π
+        for (i, dac) in enumerate(model.attributes)
+            if dac.attribute == attr
+                model.attributes[i] = DecompositionAttributeContainer(;
+                    model = dac.model,
+                    attribute = Benders.CutPreprocessingRemoveRedundant(rtol_coeff=tol.rel_ctol * τ, rtol_const=tol.rel_btol * τ),
+                    iteration = dac.iteration,
+                    dirty = dac.dirty,
+                )
+                break
+            end
+        end
     end
 
     return nothing
