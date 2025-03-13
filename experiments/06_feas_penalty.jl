@@ -6,10 +6,10 @@ import JuMP, HiGHS, Gurobi
 using Decomposition
 
 
-const GRB_ENV = Gurobi.Env()
-const EXPERIMENT = split(basename(@__FILE__), ".")[1]
-const EXPERIMENT_UUID = string(UUIDs.uuid4())
-const RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
+GRB_ENV = Gurobi.Env()
+EXPERIMENT = split(basename(@__FILE__), ".")[1]
+EXPERIMENT_UUID = string(UUIDs.uuid4())
+RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
 
 
 function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Float64)
@@ -25,7 +25,7 @@ function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Floa
         [
             Benders.Config.TotalTimesteps(T),
             Benders.Config.NumberOfTemporalBlocks(n),
-            Benders.Config.ModelVerbosity(1),
+            Benders.Config.ModelVerbosity(3),
             Benders.Config.ModelDirectMode(; enable = false),  # NOTE: if `true`, line 40 in "relaxation.jl" taking up >> 50% of the overall time.
             Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),

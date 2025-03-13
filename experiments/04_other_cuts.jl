@@ -2,7 +2,7 @@ using JuMP: JuMP
 import HiGHS, Gurobi
 using Decomposition
 
-const GRB_ENV = Gurobi.Env()
+GRB_ENV = Gurobi.Env()
 
 function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int64)
     model = Benders.DecomposedModel(;

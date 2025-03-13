@@ -6,10 +6,10 @@ import JuMP, HiGHS, Gurobi
 using Decomposition
 
 
-const GRB_ENV = Gurobi.Env()
-const EXPERIMENT = split(basename(@__FILE__), ".")[1]
-const EXPERIMENT_UUID = string(UUIDs.uuid4())
-const RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
+GRB_ENV = Gurobi.Env()
+EXPERIMENT = split(basename(@__FILE__), ".")[1]
+EXPERIMENT_UUID = string(UUIDs.uuid4())
+RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
 
 
 function cb_post_annotate(model; τ::Float64, merge_first::Bool)
@@ -63,7 +63,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
         [
             Benders.Config.TotalTimesteps(T),
             Benders.Config.NumberOfTemporalBlocks(n),
-            Benders.Config.ModelVerbosity(1),
+            Benders.Config.ModelVerbosity(3),
             Benders.Config.ModelDirectMode(; enable = false),
             Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),

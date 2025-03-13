@@ -5,10 +5,10 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-const GRB_ENV = Gurobi.Env()
-const EXPERIMENT = split(basename(@__FILE__), ".")[1]
-const EXPERIMENT_UUID = string(UUIDs.uuid4())
-const RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
+GRB_ENV = Gurobi.Env()
+EXPERIMENT = split(basename(@__FILE__), ".")[1]
+EXPERIMENT_UUID = string(UUIDs.uuid4())
+RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
 
 function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int64)
     model = Benders.DecomposedModel(;
@@ -23,7 +23,7 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
         [
             Benders.Config.TotalTimesteps(T),
             Benders.Config.NumberOfTemporalBlocks(n),
-            Benders.Config.ModelVerbosity(1),
+            Benders.Config.ModelVerbosity(3),
             Benders.Config.ModelDirectMode(; enable = true),
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
