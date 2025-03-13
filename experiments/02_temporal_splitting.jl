@@ -48,12 +48,12 @@ end
 experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3)
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_2184.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
-for n in [1, 8, 24, 39, 84]
+for n in [1, 4, 12, 60, 365]
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(n)")
-    model = experiment(jump_model; T = 2184, n = n)
+    model = experiment(jump_model; T = 8760, n = n)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(n).json"), TimerOutputs.todict(model.timer))
