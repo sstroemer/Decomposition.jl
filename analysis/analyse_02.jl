@@ -2,13 +2,14 @@ import JSON3
 using Statistics: mean
 using PlotlyJS: PlotlyJS, plot, Layout, savefig, bar
 
-const EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
-const RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
-const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
-const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
+RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
+RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
+RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
 
-const PARALLELIZATION = 16
-const ts = [1, 8, 24, 39, 84]
+PARALLELIZATION = 16
+ts = [1, 8, 24, 39, 84]
 y = Dict(
     n => Dict{String, Any}(
         "iter" => [],
@@ -114,7 +115,7 @@ traces = Vector{PlotlyJS.GenericTrace}()
 push!(traces, bar(; x = x, y = [y[n]["iter"]/base for n in ts], name = "main optimizer", marker_color = "blue"))
 savefig(
     make_plot(traces, (xaxis_title = "number of temporal splits", yaxis_title = "iterations (%)")),
-    joinpath(RUN_DIR, "iterations.svg"), width = 400, height = 500,
+    joinpath(VIZ_DIR, "iterations.png"), width = 400, height = 500,
 )
 
 # Plot time (serial).
@@ -129,7 +130,7 @@ savefig(
         traces,
         (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)"),
     ),
-    joinpath(RUN_DIR, "time_serial.svg"), width = 400, height = 500,
+    joinpath(VIZ_DIR, "time_serial.png"), width = 400, height = 500,
 )
 
 # Plot time (parallel).
@@ -144,5 +145,5 @@ savefig(
         traces,
         (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)"),
     ),
-    joinpath(RUN_DIR, "time_parallel.svg"), width = 400, height = 500,
+    joinpath(VIZ_DIR, "time_parallel.png"), width = 400, height = 500,
 )

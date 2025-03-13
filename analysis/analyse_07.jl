@@ -2,13 +2,14 @@ import JSON3
 using Statistics: mean
 using PlotlyJS: PlotlyJS, plot, bar, Layout, savefig
 
-const EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
-const RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
-const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
-const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
+RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
+RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
+RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-const examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6", "baseline"]
+examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6", "baseline"]
 y = Dict(e => Dict{String, Any}("iter" => 0, "main" => 0.0, "main_aux" => 0.0, "sub" => 0.0, "sub_aux" => 0.0) for e in examples)
 
 # Extract results.
@@ -104,5 +105,5 @@ push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] + y[e]["sub"] for e in 
 push!(traces, bar(; x = [y[e]["main_aux"] + y[e]["main"] for e in exs], y = yn, marker_color = "#b85c5c", orientation="h", name="time (overhead)", offsetgroup=1, legendgrouptitle = PlotlyJS.attr(; text = "main"), legendgroup = "main"))
 push!(traces, bar(; x = [y[e]["main"] for e in exs], y = yn, marker_color = "#b80000", orientation="h", name="time (solve)", legendgrouptitle = PlotlyJS.attr(; text = "main"), legendgroup = "main", offsetgroup=1))
 push!(traces, bar(; x = [y[e]["iter"] for e in exs], y = yn, marker_color = "#0f48aa", orientation="h", name="iterations", legendgrouptitle = PlotlyJS.attr(; text = "general"), legendgroup = "general", offsetgroup=2))
-savefig(make_plot(traces, (barmode = "group", xaxis_title = "iterations / time compared to baseline (%)",)), joinpath(RUN_DIR, "fig.svg"), width = 900, height = 400)
+savefig(make_plot(traces, (barmode = "group", xaxis_title = "iterations / time compared to baseline (%)",)), joinpath(VIZ_DIR, "fig.png"), width = 900, height = 400)
 

@@ -2,14 +2,15 @@ import JSON3
 using Statistics: mean
 using PlotlyJS: PlotlyJS, plot, Layout, savefig, scatter, bar
 
-const EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
-const RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
-const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
-const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
+RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
+RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
+RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-const exp_tol = collect(0:10)
-const tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
+exp_tol = collect(0:10)
+tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
 
 y = Dict(i => Dict{String, Any}("iter" => nothing, "time" => nothing, "lb" => nothing, "ub" => nothing) for i in exp_tol)
 
@@ -59,7 +60,7 @@ function make_plot(traces, layout)
         :plot_bgcolor => "white",
         :paper_bgcolor => "white",
         :font => PlotlyJS.attr(; family = "Arial, sans-serif", size = 10, color = "black"),
-        :margin => PlotlyJS.attr(; l = 80, r = 50, b = 65, t = 90),
+        :margin => PlotlyJS.attr(; l = 0, r = 10, b = 10, t = 10),
     )
 
     return plot(traces, Layout(; kwlay..., layout...))
@@ -80,7 +81,7 @@ for (i, gr) in enumerate(y[0]["gap_reached"])
     push!(traces, bar(; zorder = -2, x = x, y = vcat(y[0]["iter"][gr] / base_iter, zeros(length(exp_tol) - 1)), marker_color = "#ff4800$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "concurrent"), legendgroup = "concurrent", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
     push!(traces, bar(; zorder = 1, x = x, y = vcat(0.0, [y[e]["iter"][y[e]["gap_reached"][i]] / base_iter for e in exp_tol[2:end]]), marker_color = "#0026ff$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "barrier"), legendgroup = "barrier", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
 end
-savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "iterations (%)", yaxis_range = [0, ymax])), joinpath(RUN_DIR, "iterations.svg"); width = 700, height = 550)
+savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "iterations (%)", yaxis_range = [0, ymax])), joinpath(VIZ_DIR, "iterations.png"); width = 700, height = 550)
 
 traces = Vector{PlotlyJS.GenericTrace}()
 push!(traces, scatter(; zorder = -1, x = x, y = fill(100.0, length(x)), mode = "lines", showlegend = false, line = PlotlyJS.attr(; color = "black", dash = "dash")))
@@ -88,4 +89,9 @@ for (i, gr) in enumerate(y[0]["gap_reached"])
     push!(traces, bar(; zorder = -2, x = x, y = vcat(y[0]["time"][gr] / base_time, zeros(length(exp_tol) - 1)), marker_color = "#ff4800$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "concurrent"), legendgroup = "concurrent", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
     push!(traces, bar(; zorder = 1, x = x, y = vcat(0.0, [y[e]["time"][y[e]["gap_reached"][i]] / base_time for e in exp_tol[2:end]]), marker_color = "#0026ff$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "barrier"), legendgroup = "barrier", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
 end
-savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax])), joinpath(RUN_DIR, "time.svg"); width = 700, height = 550)
+savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax])), joinpath(VIZ_DIR, "time.png"); width = 700, height = 550)
+
+savefig(
+    make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax])),
+    joinpath(VIZ_DIR, "time.png"); scale=2, width = 700, height = 550
+)

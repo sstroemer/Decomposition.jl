@@ -2,15 +2,16 @@ import JSON3
 using Statistics: mean
 using PlotlyJS: PlotlyJS, plot, Layout, savefig, bar
 
-const EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
-const RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
-const RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
-const RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
+RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
+RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
+RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
+VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
 # iterations, sub time distribution
-const τ = 0.5
-const π0 = 1e8
+τ = 0.5
+π0 = 1e8
 
 y = Dict("h" => Dict{String, Any}("sub" => nothing), "g" => Dict{String, Any}("sub" => nothing))
 
@@ -99,7 +100,7 @@ push!(traces, bar(; x = x, y = reverse(y["g"]["iter"]), name = "Gurobi v12.0.1",
 push!(traces, bar(; x = x, y = reverse(y["h"]["iter"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "iterations (%)")),
-    joinpath(RUN_DIR, "iterations.svg"), width = 500, height = 500,
+    joinpath(VIZ_DIR, "iterations.png"), width = 500, height = 500,
 )
 
 # Plot avg. sub time.
@@ -108,5 +109,5 @@ push!(traces, bar(; x = x, y = reverse(y["g"]["sub"]), name = "Gurobi v12.0.1", 
 push!(traces, bar(; x = x, y = reverse(y["h"]["sub"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "avg. sub-model solve time (%)")),
-    joinpath(RUN_DIR, "sub_time.svg"), width = 500, height = 500,
+    joinpath(VIZ_DIR, "sub_time.png"), width = 500, height = 500,
 )
