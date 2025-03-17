@@ -17,16 +17,22 @@ for r in RUNS
     dir = joinpath(RUN_DIR, r)
 
     for e in examples
-        history = JSON3.read(joinpath(dir, "history_$(e).json"))
+        history = JSON3.read(joinpath(dir, "history_$(e).json"); allow_inf = true)
 
         lb, ub = [-Inf], [+Inf]
         for i in eachindex(history)
             push!(lb, max(lb[end], history[i]["lb"]))
-            push!(ub, min(ub[end], history[i]["ub"]))
+            push!(ub, min(ub[end], abs(history[i]["ub"])))
+        end
+        for i in 1:(250-length(history))
+            push!(lb, lb[end])
+            push!(ub, ub[end])
         end
 
-        y[e]["lb"] = hcomb(y[e]["lb"], lb[2:end])
-        y[e]["ub"] = hcomb(y[e]["ub"], ub[2:end])
+        @show r, e, length(lb), length(ub)
+
+        y[e]["lb"] = hcomb(y[e]["lb"], lb[2:225])
+        y[e]["ub"] = hcomb(y[e]["ub"], ub[2:225])
     end
 end
 
@@ -72,7 +78,7 @@ function make_plot(ex)
         traces,
         scatter(;
             x = x,
-            y = fill(5.821398080e+06, length(x)),
+            y = fill(2.23922483671398e7, length(x)),
             mode = "lines",
             name = "target",
             line = PlotlyJS.attr(; color = "black", dash = "dash"),

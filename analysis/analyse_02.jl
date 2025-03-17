@@ -9,7 +9,7 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 
 PARALLELIZATION = 16
-ts = [1, 4, 12, 60, 365]
+ts = [1, 4, 12, 24, 60, 365]
 y = Dict(
     n => Dict{String, Any}(
         "iter" => [],

@@ -13,49 +13,62 @@ hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 τ = 0.5
 π0 = 1e8
 
-y = Dict("h" => Dict{String, Any}("sub" => nothing), "g" => Dict{String, Any}("sub" => nothing))
+PARALLELIZATION = 16
+y = Dict(s => Dict{String, Any}(k => nothing for k in ["x", "iter", "main", "sub_p", "sub_s"]) for s in ["h", "g"])
 
 # Extract results.
 for r in RUNS
     for solver in ["h", "g"]
         dir = joinpath(RUN_DIR, r)
         timings = [
-            (π = π0 * τ^(i - 1), t = JSON3.read(fn)) for
-            (i, fn) in enumerate(readdir(dir; join = true)) if startswith(basename(fn), "$(solver)_timer")
+            (π = π0 * τ^(i - 1), t = JSON3.read(fn)) for (i, fn) in
+            enumerate([fn for fn in readdir(dir; join = true) if startswith(basename(fn), "$(solver)_timer")])
         ]
 
-        y[solver]["x"] = [el.π for el in timings]
-        y[solver]["iter"] = [el.t[:inner_timers][:main][:inner_timers][:optimize][:n_calls] for el in timings]
+        y[solver]["x"] = hcomb(y[solver]["x"], [el.π for el in timings])
+        y[solver]["iter"] = hcomb(y[solver]["iter"], [el.t[:inner_timers][:sub][:n_calls] for el in timings])
+        y[solver]["main"] = hcomb(y[solver]["main"], [el.t[:inner_timers][:main][:time_ns] for el in timings])
+        y[solver]["sub_s"] = hcomb(y[solver]["sub_s"], [el.t[:inner_timers][:sub][:time_ns] for el in timings])
 
         tmp = []
-        for timing in timings
-            st = [v[:time_ns] for (k, v) in timing.t[:inner_timers][:sub][:inner_timers]]
-            threshold = maximum(st) * 0.5
-            st = mean(el for el in st if el > threshold) / 1e9
-            push!(tmp, st)
+        for el in timings
+            sit = el.t[:inner_timers][:sub][:inner_timers]
+            par = zeros(PARALLELIZATION)
+            pi = 1
+            for t in sort([v[:time_ns] for v in values(sit)]; rev = true)
+                par[pi] += t
+                pi = pi % PARALLELIZATION + 1
+            end
+            push!(tmp, par[1])
         end
-        y[solver]["sub"] = hcomb(y[solver]["sub"], tmp)
+        y[solver]["sub_p"] = hcomb(y[solver]["sub_p"], tmp)
     end
 end
 
-base_iter = y["g"]["iter"][end] ./ 100.0
-base_sub = y["g"]["sub"][end] ./ 100.0
+# Average results.
 for solver in ["h", "g"]
-    # Average results.
     if length(RUNS) > 1
-        y[solver]["sub"] = vec(mean(y[solver]["sub"]; dims = 2))
-        y[solver]["sub"] = vec(mean(y[solver]["sub"]; dims = 2))
+        for k in keys(y[solver])
+            y[solver][k] = vec(mean(y[solver][k]; dims = 2))
+        end
     end
+end
 
-    # Normalize.
+# Normalize.
+base_iter = y["g"]["iter"][end] ./ 100.0
+base_time = (y["g"]["main"][end] + y["g"]["sub_p"][end]) ./ 100.0
+for solver in ["h", "g"]
     y[solver]["iter"] = y[solver]["iter"] ./ base_iter
-    y[solver]["sub"] = y[solver]["sub"] ./ base_sub
+    y[solver]["main"] = y[solver]["main"] ./ base_time
+    y[solver]["sub_p"] = y[solver]["sub_p"] ./ base_time
+    y[solver]["sub_s"] = y[solver]["sub_s"] ./ base_time
 end
 
 # Plot.
 function make_plot(traces, layout)
     kwlay = Dict(
         :title => "",
+        # :yaxis_type => "log",
         :xaxis => PlotlyJS.attr(;
             showgrid = true,
             zeroline = false,
@@ -79,12 +92,13 @@ function make_plot(traces, layout)
             gridcolor = "lightgray",
         ),
         :legend => PlotlyJS.attr(;
-            x = 0.95,
-            y = 0.95,
+            x = 1.1,
+            y = 1.1,
             bordercolor = "black",
             borderwidth = 1,
             xanchor = "right",
             yanchor = "top",
+            orientation = "h",
         ),
         :plot_bgcolor => "white",
         :paper_bgcolor => "white",
@@ -95,26 +109,98 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
-x = reverse(string.(log.(1 / τ, y["g"]["x"] ./ minimum(y["g"]["x"]))))
+x = reverse(string.(y["g"]["x"]))
 
 # Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = reverse(y["g"]["iter"]), name = "Gurobi v12.0.1", marker_color = "#ff4800"))
-push!(traces, bar(; x = x, y = reverse(y["h"]["iter"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
+push!(traces, bar(; x = x, y = reverse(y["g"]["iter"]), name = "Gurobi v12.0.1", marker_color = "#9c0000"))
+push!(traces, bar(; x = x, y = reverse(y["h"]["iter"]), name = "HiGHS v1.9.0", marker_color = "#39009c"))
 savefig(
-    make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "iterations (%)")),
+    make_plot(traces, (xaxis_title = "feasibility penalty", yaxis_title = "iterations (%)")),
     joinpath(VIZ_DIR, "iterations.png");
     width = 500,
     height = 500,
 )
 
-# Plot avg. sub time.
+# Plot time.
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = reverse(y["g"]["sub"]), name = "Gurobi v12.0.1", marker_color = "#ff4800"))
-push!(traces, bar(; x = x, y = reverse(y["h"]["sub"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["g"]["main"] .+ y["g"]["sub_s"]),
+        offsetgroup = 2,
+        legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
+        legendgroup = "gurobi",
+        name = "sub (serial)",
+        marker_color = "#9c7a68",
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["g"]["main"] .+ y["g"]["sub_p"]),
+        offsetgroup = 2,
+        legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
+        legendgroup = "gurobi",
+        name = "sub (parallel)",
+        marker_color = "#9c3600",
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["g"]["main"]),
+        offsetgroup = 2,
+        legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
+        legendgroup = "gurobi",
+        name = "main",
+        marker_color = "#9c0000",
+    ),
+)
+
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["h"]["main"] .+ y["h"]["sub_s"]),
+        offsetgroup = 1,
+        legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
+        legendgroup = "highs",
+        name = "sub (serial)",
+        marker_color = "#8d689c",
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["h"]["main"] .+ y["h"]["sub_p"]),
+        offsetgroup = 1,
+        legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
+        legendgroup = "highs",
+        name = "sub (parallel)",
+        marker_color = "#6f009c",
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = reverse(y["h"]["main"]),
+        offsetgroup = 1,
+        legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
+        legendgroup = "highs",
+        name = "main",
+        marker_color = "#39009c",
+    ),
+)
+
 savefig(
-    make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "avg. sub-model solve time (%)")),
-    joinpath(VIZ_DIR, "sub_time.png");
+    make_plot(traces, (xaxis_title = "feasibility penalty", yaxis_title = "total model time (%)")),
+    joinpath(VIZ_DIR, "time.png");
     width = 500,
     height = 500,
 )
