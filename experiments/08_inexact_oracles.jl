@@ -32,7 +32,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, tol::Float64)
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Main.RegularizationLevelSet(alpha = 0.5, infeasible_alpha_step = 0.2),
+            Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2),
             Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
         ],
     )
