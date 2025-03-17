@@ -26,7 +26,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64)
             Benders.Config.TotalTimesteps(T),
             Benders.Config.NumberOfTemporalBlocks(n),
             Benders.Config.ModelVerbosity(3),
-            Benders.Config.ModelDirectMode(; enable = true),
+            Benders.Config.ModelDirectMode(; enable = false),
             Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
