@@ -20,9 +20,7 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
         valid_cuts = []
         for cut in new_cuts[cut_type]
             if cut_type == :optimality
-                any(
-                    jump_expressions_equal(cut[2], other; tol...) for other in opt_sub_map[cut[1]]
-                ) && continue
+                any(jump_expressions_equal(cut[2], other; tol...) for other in opt_sub_map[cut[1]]) && continue
             else
                 any(jump_expressions_equal(cut[2], other.cut_exp; tol...) for other in model.cuts[cut_type]) && continue
             end
@@ -43,7 +41,10 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
             if dac.attribute == attr
                 model.attributes[i] = DecompositionAttributeContainer(;
                     model = dac.model,
-                    attribute = Benders.CutPreprocessingRemoveRedundant(rtol_coeff=tol.rel_ctol * τ, rtol_const=tol.rel_btol * τ),
+                    attribute = Benders.CutPreprocessingRemoveRedundant(;
+                        rtol_coeff = tol.rel_ctol * τ,
+                        rtol_const = tol.rel_btol * τ,
+                    ),
                     iteration = dac.iteration,
                     dirty = dac.dirty,
                 )
@@ -55,7 +56,10 @@ function _preprocess_cuts_remove_redundant!(model::Benders.DecomposedModel, new_
     return nothing
 end
 
-function _preprocess_cuts_stabilize_numerical_range!(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}})
+function _preprocess_cuts_stabilize_numerical_range!(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+)
     !has_attribute_type(model, Benders.CutPreprocessingStabilizeNumericalRange) && return nothing
     attr = get_attribute(model, Benders.CutPreprocessingStabilizeNumericalRange)
 
@@ -69,13 +73,13 @@ function _preprocess_cuts_stabilize_numerical_range!(model::Benders.DecomposedMo
         for (var, coeff, fact) in zip(cut[2].terms.keys, cut[2].terms.vals, constant_factor)
             if fact > attr.const_factor_threshold
                 max_delta = Inf
-                
+
                 if coeff > 0 && JuMP.has_lower_bound(var)
                     max_delta = JuMP.lower_bound(var) * coeff
                 elseif coeff < 0 && JuMP.has_upper_bound(var)
                     max_delta = JuMP.upper_bound(var) * coeff
                 end
-                
+
                 if abs(max_delta / constant) < attr.const_factor_elimination_max_rel_delta
                     delete!(cut[2].terms, var)
                     cut[2].constant += max_delta
@@ -99,7 +103,8 @@ function _preprocess_cuts_make_unique!(model::Benders.DecomposedModel, new_cuts:
         valid_cuts = []
         for cut in new_cuts[cut_type]
             if cut_type == :optimality
-                any(jump_expressions_equal(cut[2], other[2]; tol...) for other in valid_cuts if cut[1] == other[1]) && continue
+                any(jump_expressions_equal(cut[2], other[2]; tol...) for other in valid_cuts if cut[1] == other[1]) &&
+                    continue
             else
                 any(jump_expressions_equal(cut[2], other[2]; tol...) for other in valid_cuts) && continue
             end

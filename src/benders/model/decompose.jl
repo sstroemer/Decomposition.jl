@@ -5,11 +5,11 @@ function apply_annotations!(model::Benders.DecomposedModel)
     # Prepare & save the full variable / constraint indices.
     vis_main = sort(union([v for (k, v) in model.annotations[:variables] if startswith(string(k), "main")]...))
     cis_main = sort(union([c for (k, c) in model.annotations[:constraints] if startswith(string(k), "main")]...))
-    push!(model.vis, vis_main)       
+    push!(model.vis, vis_main)
     push!(model.cis, cis_main)
 
     # Create & save main-model.
-    push!(model.models, Benders.lpmd_to_jump(model, vis_main, cis_main; name="main", optimizer=model.f_opt_main()))
+    push!(model.models, Benders.lpmd_to_jump(model, vis_main, cis_main; name = "main", optimizer = model.f_opt_main()))
 
     # TODO / NOTE for WRITING:
     # Grouping sub-models does not really work without extracting distinct cuts afterwards. It may be seen as a different take on "single-cut" (instead of multicut).
@@ -34,12 +34,12 @@ function apply_annotations!(model::Benders.DecomposedModel)
         problem_size = [
             sqrt(
                 length(model.annotations[:variables][Symbol("sub_$i")])^2 +
-                length(model.annotations[:constraints][Symbol("sub_$i")])^2
+                length(model.annotations[:constraints][Symbol("sub_$i")])^2,
             ) for i in 1:n_sub_models
         ]
 
         # Sort the sub-models by their complexity.
-        sorted_indices = sortperm(problem_size; rev=true)
+        sorted_indices = sortperm(problem_size; rev = true)
 
         # Calculate the number of groups, either:
         nof_groups = (
@@ -50,7 +50,7 @@ function apply_annotations!(model::Benders.DecomposedModel)
                 # Estimate automatically, by trying to create "balanced" group sizes.
                 est = problem_size[sorted_indices[1:2]]
                 for i in sorted_indices[3:end]
-                    if (problem_size[i] + est[end]) <= est[end - 1]
+                    if (problem_size[i] + est[end]) <= est[end-1]
                         est[end] += problem_size[i]
                     else
                         push!(est, problem_size[i])
@@ -62,7 +62,7 @@ function apply_annotations!(model::Benders.DecomposedModel)
 
         groups = [Int[] for _ in 1:nof_groups]
         group_size = zeros(Float64, nof_groups)
-    
+
         # Create groups by greedily adding the largest sub-models first, and always to the group with the currently
         # smallest total size.
         for idx in sorted_indices
@@ -70,7 +70,7 @@ function apply_annotations!(model::Benders.DecomposedModel)
             push!(groups[smallest_group], idx)
             group_size[smallest_group] += problem_size[idx]
         end
-    
+
         for group in groups
             # Multiple models may try to add the same variable copies (from main) to the same group.
             push!(vis_sub, unique([vi for g in group for vi in model.annotations[:variables][Symbol("sub_$g")]]))
@@ -84,7 +84,10 @@ function apply_annotations!(model::Benders.DecomposedModel)
         push!(model.cis, cis_sub[i])
 
         # Create & save sub-model.
-        push!(model.models, Benders.lpmd_to_jump(model, vis_sub[i], cis_sub[i]; name="sub_$i", optimizer=model.f_opt_sub()))
+        push!(
+            model.models,
+            Benders.lpmd_to_jump(model, vis_sub[i], cis_sub[i]; name = "sub_$i", optimizer = model.f_opt_sub()),
+        )
     end
 
     # Cache the variable indices in main that link to a specific sub-model.

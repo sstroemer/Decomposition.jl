@@ -15,21 +15,29 @@ function _preprocess_cuts_drop_non_binding!(model::Benders.DecomposedModel)
     @timeit model.timer "drop non-binding" begin
         attr = get_attribute(model, Benders.CutPostprocessingDropNonBinding)
 
-        to_delete = JuMP.JuMP.ConstraintRef{JuMP.Model, JuMP.MOI.ConstraintIndex{JuMP.MOI.ScalarAffineFunction{Float64}, JuMP.MOI.GreaterThan{Float64}}, JuMP.ScalarShape}[]
+        to_delete = JuMP.JuMP.ConstraintRef{
+            JuMP.Model,
+            JuMP.MOI.ConstraintIndex{JuMP.MOI.ScalarAffineFunction{Float64}, JuMP.MOI.GreaterThan{Float64}},
+            JuMP.ScalarShape,
+        }[]
 
         @timeit model.timer "scan" begin
             for cuts in values(model.cuts)
                 for cut in cuts::Vector{Decomposition.Benders.AbstractGeneralCut}
                     cs = cut.stats::Dict{Symbol, Any}
                     cnb = cs[:nonbinding]::Int64
-                    
+
                     # Skip cuts that were already removed.
                     (cnb < 0) && continue
 
-                    con = cut.cut_con::JuMP.ConstraintRef{JuMP.Model, JuMP.MOI.ConstraintIndex{JuMP.MOI.ScalarAffineFunction{Float64}, JuMP.MOI.GreaterThan{Float64}}, JuMP.ScalarShape}
+                    con = cut.cut_con::JuMP.ConstraintRef{
+                        JuMP.Model,
+                        JuMP.MOI.ConstraintIndex{JuMP.MOI.ScalarAffineFunction{Float64}, JuMP.MOI.GreaterThan{Float64}},
+                        JuMP.ScalarShape,
+                    }
 
                     # Update the non-binding counter.
-                    cs[:nonbinding] = (abs(JuMP.dual(con)) < attr.threshold ? (cnb+1) : 0)::Int64
+                    cs[:nonbinding] = (abs(JuMP.dual(con)) < attr.threshold ? (cnb + 1) : 0)::Int64
 
                     # Remove the cut if it was non-binding for a certain number of iterations.
                     if cs[:nonbinding]::Int64 >= attr.iterations
@@ -45,7 +53,7 @@ function _preprocess_cuts_drop_non_binding!(model::Benders.DecomposedModel)
             isempty(to_delete) || JuMP.delete(Benders.main(model)::JuMP.Model, to_delete)
         end
     end
-    
+
     return nothing
 end
 

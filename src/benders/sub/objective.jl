@@ -4,12 +4,12 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.Sub.Objective
 
     vis_main = model.vis[1]
 
-    for i in 1:(length(model.models) - 1)
+    for i in 1:(length(model.models)-1)
         attribute.index == -1 || attribute.index == i || continue
 
-        m_sub = Benders.sub(model; index=i)
-        vis_sub = model.vis[1 + i]
-    
+        m_sub = Benders.sub(model; index = i)
+        vis_sub = model.vis[1+i]
+
         m_sub[:obj] = JuMP.AffExpr(0.0)
         for vi in vis_sub
             (vi in vis_main) && continue

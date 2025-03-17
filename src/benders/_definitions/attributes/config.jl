@@ -87,11 +87,9 @@ end
 # │ DEFAULTS                                                                                                           │
 # ╰ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶ ╶╯
 
-union!(parentmodule(@__MODULE__)._ATTRIBUTE_DEFAULTS, [
-    NumberOfTemporalBlocks(),
-    ModelVerbosity(),
-    ModelDebug(),
-    ModelDirectMode(),
-])
+union!(
+    parentmodule(@__MODULE__)._ATTRIBUTE_DEFAULTS,
+    [NumberOfTemporalBlocks(), ModelVerbosity(), ModelDebug(), ModelDirectMode()],
+)
 
 end

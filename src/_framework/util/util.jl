@@ -43,9 +43,7 @@ function _norm_strname(str::String, width::Int64 = 50)
     return "$(prefix)...$(suffix)"
 end
 
-function _get_decomposition_data!(model::JuMP.Model)
-    return get!(model.ext, :decomposition_jl, Dict{Symbol, Dict}())
-end
+_get_decomposition_data!(model::JuMP.Model) = get!(model.ext, :decomposition_jl, Dict{Symbol, Dict}())
 
 function _print_iteration(k, args...)
     f(x) = Printf.@sprintf("%11.3e", x)

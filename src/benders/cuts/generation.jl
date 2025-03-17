@@ -1,9 +1,5 @@
 function generate_cuts(model::Benders.DecomposedModel)
-    new_cuts = Dict{Symbol, Vector{Any}}(
-        :feasibility => [],
-        :optimality => [],
-        :misfsz => [],
-    )
+    new_cuts = Dict{Symbol, Vector{Any}}(:feasibility => [], :optimality => [], :misfsz => [])
 
     _generate_cuts_from_dual(model, new_cuts)
     _generate_cuts_from_primal(model, new_cuts)
@@ -21,8 +17,8 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
 
     cur_sol_main = model.info[:results][:main][:sol]::JuMP.Containers.DenseAxisArray
 
-    for i in 1:(length(model.models) - 1)
-        m_sub = Benders.sub(model; index=i)
+    for i in 1:(length(model.models)-1)
+        m_sub = Benders.sub(model; index = i)
         get(m_sub.ext, :dualization_is_dualized, false) || continue
 
         # TODO: better checks!
@@ -49,16 +45,19 @@ function _generate_cuts_from_dual(model::Benders.DecomposedModel, new_cuts::Dict
             for elem in m_sub.ext[:dualization_obj_param]
                 # Account for "other" parameters (e.g., by MISFSZ cuts).
                 haskey(m_sub.ext[:dualization_var_to_vi], elem[1]) || continue
-                
+
                 vi = m_sub.ext[:dualization_var_to_vi][elem[1]]
                 λ = JuMP.value(elem[2])
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])
                 JuMP.add_to_expression!(exp_cut, λ, -cur_sol_main[vi])
             end
             push!(new_cuts[:feasibility], (i, exp_cut))
-        elseif gen_opt_cuts && JuMP.termination_status(m_sub) == MOI.OPTIMAL && JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
+        elseif gen_opt_cuts &&
+               JuMP.termination_status(m_sub) == MOI.OPTIMAL &&
+               JuMP.primal_status(m_sub) == MOI.FEASIBLE_POINT
             exp_cut = JuMP.AffExpr(
-                JuMP.dual_status(m_sub) == MOI.FEASIBLE_POINT ? JuMP.dual_objective_value(m_sub) : JuMP.objective_value(m_sub)
+                JuMP.dual_status(m_sub) == MOI.FEASIBLE_POINT ? JuMP.dual_objective_value(m_sub) :
+                JuMP.objective_value(m_sub),
             )
             for elem in m_sub.ext[:dualization_obj_param]
                 # Account for "other" parameters (e.g., by MISFSZ cuts).
@@ -89,8 +88,8 @@ function _generate_cuts_from_primal(model::Benders.DecomposedModel, new_cuts::Di
 
     cur_sol_main = model.info[:results][:main][:sol]::JuMP.Containers.DenseAxisArray
 
-    for i in 1:(length(model.models) - 1)
-        m_sub = Benders.sub(model; index=i)
+    for i in 1:(length(model.models)-1)
+        m_sub = Benders.sub(model; index = i)
         get(m_sub.ext, :dualization_is_dualized, false) && continue
 
         y_sub = m_sub[:y]
@@ -115,7 +114,7 @@ function _generate_cuts_from_primal(model::Benders.DecomposedModel, new_cuts::Di
             push!(new_cuts[:optimality], (i, exp_cut))
         elseif cut_type == :feasibility && gen_feas_cuts
             exp_cut = JuMP.AffExpr(model.info[:results][:subs][i][:obj_dual])  # TODO: what's the best way to access this?
-            
+
             for vi in model.annotations[:linking_variables][Symbol(i)]
                 λ = JuMP.dual(JuMP.FixRef(y_sub[vi]))
                 JuMP.add_to_expression!(exp_cut, λ, Benders.main(model)[:x][vi])

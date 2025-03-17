@@ -2,7 +2,6 @@ using JuMP
 import HiGHS, Gurobi
 using Random: seed!
 
-
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 seed!(1234)
 
@@ -19,13 +18,12 @@ end
 A = vcat(A, _A)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
 function sub_primal(model, x)
     @variable(model, 0 <= y[1:N])
     link = @constraint(model, A * y .>= vcat(b, -x))
     @objective(model, Min, c' * y)
     optimize!(model)
-    
+
     return dual_objective_value(model), dual.(link[(N+1):end])
 end
 
@@ -34,7 +32,7 @@ function sub_dual(model, x)
     @constraint(model, A' * y .<= c)
     @objective(model, Max, vcat(b, -x)' * y)
     optimize!(model)
-    
+
     return objective_value(model), value.(y[(N+1):end])
 end
 
@@ -59,7 +57,7 @@ for i in 1:100
     vx = value.(x)
 
     sub = Model(opt)
-    
+
     # Note on HiGHS IPM and crossover: Crossover will often times be skipped. However, it will sometimes encounter
     # `WARNING: IPX solution is imprecise, so clean up with simplex`. Without crossover it would in these cases fail.
 
@@ -68,7 +66,7 @@ for i in 1:100
     # set_attributes(sub, "presolve" => "off", "solver" => "simplex", "simplex_strategy" => 4) # primal simplex
     # set_attributes(sub, "presolve" => "off", "solver" => "simplex", "simplex_strategy" => 1) # dual simplex
     # set_attributes(sub, "presolve" => "off", "solver" => "ipm", "run_crossover" => "on")
-    
+
     obj, λ = sub_primal(sub, vx)
     # obj, λ = sub_dual(sub, vx)
 

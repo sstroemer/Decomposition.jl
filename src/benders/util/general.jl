@@ -1,15 +1,19 @@
 
-
 function estimate_sub_model_time(model::Benders.DecomposedModel)
     function _estimate(model::Benders.DecomposedModel; index::Int)
         if haskey(model.timer, "sub") && haskey(model.timer["sub"], "[$(index)]")
-            return model.timer["sub"]["[$(index)]"].accumulated_data.time / model.timer["sub"]["[$(index)]"].accumulated_data.ncalls
+            return model.timer["sub"]["[$(index)]"].accumulated_data.time /
+                   model.timer["sub"]["[$(index)]"].accumulated_data.ncalls
         else
             return 1.0  # TODO: base that on number of vars/cons/nnzs, etc.
         end
     end
 
-    return sort(collect(Dict(i => _estimate(model; index=i) / 1e9 for i in 1:length(Benders.subs(model)))); by=x->x[2], rev=true)
+    return sort(
+        collect(Dict(i => _estimate(model; index = i) / 1e9 for i in 1:length(Benders.subs(model))));
+        by = x -> x[2],
+        rev = true,
+    )
 end
 
 function allocate_sub_models(model::Benders.DecomposedModel, n::Int)

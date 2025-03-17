@@ -11,12 +11,12 @@ apply!(model::Benders.DecomposedModel, attribute::Benders.Config.ModelDirectMode
 
 function apply!(model::Benders.DecomposedModel, attribute::Solver.AbstractAttribute)
     models = attribute.model == :main ? [Benders.main(model)] : Benders.subs(model)
-    
+
     ret = true
     for m in models
         ret &= Solver._modify_jump(m, attribute)
     end
-    
+
     return ret
 end
 
@@ -50,7 +50,7 @@ function finalize!(model::Benders.DecomposedModel; cb_post_annotate = nothing)
 
             # Prepare the attribute name for timing purposes.
             an = string(ac.attribute)
-            an = String(rsplit(split(an, "(")[1], "."; limit=2)[end])
+            an = String(rsplit(split(an, "(")[1], "."; limit = 2)[end])
 
             ret = @timeit model.timer an apply!(model, ac.attribute)
             if !ret

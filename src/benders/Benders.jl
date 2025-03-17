@@ -25,7 +25,7 @@ include("model/lpmd_to_jump.jl")
 include("_definitions/definitions.jl")
 
 main(model::Benders.DecomposedModel) = model.models[1]
-sub(model::Benders.DecomposedModel; index::Int) = model.models[1 + index]
+sub(model::Benders.DecomposedModel; index::Int) = model.models[1+index]
 subs(model::Benders.DecomposedModel) = model.models[2:end]
 
 function check_cut_type(jump_model::JuMP.Model; verbose::Bool = true)

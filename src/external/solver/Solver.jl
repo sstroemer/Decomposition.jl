@@ -26,16 +26,13 @@ include("gurobi.jl")
 include("highs.jl")
 
 function _modify_jump(jump_model::JuMP.Model, attribute::AbstractAttribute)
-    solver_functions = Dict(
-        "Gurobi" => _gurobi_modify_jump,
-        "HiGHS" => _highs_modify_jump,
-    )
+    solver_functions = Dict("Gurobi" => _gurobi_modify_jump, "HiGHS" => _highs_modify_jump)
 
     solver = JuMP.solver_name(jump_model)
     if startswith(solver, "Dual model with")
         solver = solver[17:(end-9)]
     end
-    
+
     if !haskey(solver_functions, solver)
         @error "Solver is currently not supported for this attribute" solver attribute
         return false

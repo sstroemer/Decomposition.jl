@@ -15,10 +15,8 @@ function write_to_file(model::Benders.DecomposedModel; filename::String = "")
                 "splits" => get_attribute(model, Config.NumberOfTemporalBlocks, :n),
             ),
             "attributes" => showtostr.(model.attributes),
-            "models" => OrderedDict(
-                "main" => _showtostr(Benders.main(model)),
-                "subs" => _showtostr.(Benders.subs(model)),
-            ),
+            "models" =>
+                OrderedDict("main" => _showtostr(Benders.main(model)), "subs" => _showtostr.(Benders.subs(model))),
             "cuts" => OrderedDict(
                 "feasibility" => length(model.cuts[:feasibility]),
                 "optimality" => length(model.cuts[:optimality]),
@@ -26,10 +24,10 @@ function write_to_file(model::Benders.DecomposedModel; filename::String = "")
             "history" => filter.(k -> (k.first != :added_cuts_con), model.info[:history]),
             "log" => join(model.log, "\n"),
         ),
-        JSON3.AlignmentContext(alignment=:Left, indent=2);
-        allow_inf=true
+        JSON3.AlignmentContext(; alignment = :Left, indent = 2);
+        allow_inf = true,
     )
-    
+
     json_str = String(take!(sio))
     short_hash = bytes2hex(SHA.sha1(json_str))[1:7]
     filename = isempty(filename) ? "$(model.name)_$(short_hash).djl.json" : filename

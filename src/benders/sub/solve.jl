@@ -12,7 +12,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
     #     # MOI.Utilities.reset_optimizer(bd_sub(model; index=i))   # only works for non-direct mode
     # end
 
-    jm = Benders.sub(model; index=query.index)
+    jm = Benders.sub(model; index = query.index)
     mis_fsz_cuts = has_attribute_type(model, Benders.CutTypeMISFSZ)
 
     # Fix the current main-model solution in the sub-model.
@@ -31,21 +31,21 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
                     JuMP.add_to_expression!(
                         jm[:obj_param],
                         model.info[:results][:main][:sol][v2v_map[elem[1]]] * elem[3],
-                        elem[2]
+                        elem[2],
                     )
                 elseif mis_fsz_cuts
                     # The "artifical" π_0 variable.
                     JuMP.add_to_expression!(
                         jm[:obj_param_π_0],
                         JuMP.value(Benders.main(model)[:θ][query.index]) * elem[3],
-                        jm.ext[:dualization_π_0]
+                        jm.ext[:dualization_π_0],
                     )
                 else
                     @error "Missing variable mapping for dualized variable"
                 end
             end
 
-            jm[:obj] = jm[:obj_param] + jm[:obj_base] + jm[:obj_param_π_0]       
+            jm[:obj] = jm[:obj_param] + jm[:obj_base] + jm[:obj_param_π_0]
 
             # if mis_fsz_cuts
             #     # Update & add the MISFSZ objective term.
@@ -61,18 +61,16 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveSub)
         else
             # Standard (primal) model.
             for vi in jm[:y].axes[1]
-                JuMP.fix(jm[:y][vi], model.info[:results][:main][:sol][vi]; force=true)
+                JuMP.fix(jm[:y][vi], model.info[:results][:main][:sol][vi]; force = true)
             end
         end
     end
-    
+
     # Solve the sub's JuMP model.
     @timeit model.timer "optimize" JuMP.optimize!(jm)
 
     return nothing
 end
-
-
 
 # using JuMP
 # import Gurobi

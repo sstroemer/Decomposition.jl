@@ -10,7 +10,7 @@ function apply!(model::Benders.DecomposedModel, attribute::Benders.AbstractCutTy
     # For optimality cuts, we need to setup the θ variable.
     if attribute isa Benders.AbstractOptimalityCutType && !haskey(Benders.main(model), :θ)
         # First time configuring the optimality cut type => setup the θ variable.
-        JuMP.@variable(Benders.main(model), θ[i = 1:(length(model.models) - 1)])
+        JuMP.@variable(Benders.main(model), θ[i = 1:(length(model.models)-1)])
         JuMP.set_lower_bound.(θ, -1e4)           # TODO
     end
 
@@ -64,17 +64,20 @@ function add_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{
 
     if !isempty(new_cuts[:feasibility])
         # Use the "last", the currently active, cut type specfication.
-        nof_added_feas_cuts = _add_feasibility_cuts(model, new_cuts, get_attribute(model, Benders.AbstractFeasibilityCutType))
+        nof_added_feas_cuts =
+            _add_feasibility_cuts(model, new_cuts, get_attribute(model, Benders.AbstractFeasibilityCutType))
     end
 
     if !isempty(new_cuts[:optimality])
         # Use the "last", the currently active, cut type specfication.
-        nof_added_opt_cuts = _add_optimality_cuts(model, new_cuts, get_attribute(model, Benders.AbstractOptimalityCutType))
+        nof_added_opt_cuts =
+            _add_optimality_cuts(model, new_cuts, get_attribute(model, Benders.AbstractOptimalityCutType))
     end
 
     if !isempty(new_cuts[:misfsz])
         # Use the "last", the currently active, cut type specfication.
-        nof_added_feas_cuts, nof_added_opt_cuts = _add_misfsz_cuts(model, new_cuts, get_attribute(model, Benders.CutTypeMISFSZ))
+        nof_added_feas_cuts, nof_added_opt_cuts =
+            _add_misfsz_cuts(model, new_cuts, get_attribute(model, Benders.CutTypeMISFSZ))
     end
 
     return nof_added_feas_cuts, nof_added_opt_cuts
@@ -96,99 +99,127 @@ function _add_misfsz_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol,
 
         push!(
             model.cuts[:misfsz],
-            CutGenerator(
+            CutGenerator(;
                 iteration = current_iteration(model),
                 sub_model_index = i,
                 cut_exp = exp_cut,
                 cut_con = JuMP.@constraint(Benders.main(model), exp_cut <= 0)
-            )
+            ),
         )
     end
 
     return nof_added_feas_cuts, nof_added_opt_cuts
 end
 
-function _add_feasibility_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.FeasibilityCutTypeSingle)
+function _add_feasibility_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.FeasibilityCutTypeSingle,
+)
     exp_agg_cut = JuMP.AffExpr(0.0)
-    
+
     for (_, exp_cut) in new_cuts[:feasibility]
         JuMP.add_to_expression!(exp_agg_cut, exp_cut)
     end
-    
+
     push!(
         model.cuts[:feasibility],
-        Benders.GeneralFeasibilityCut(
+        Benders.GeneralFeasibilityCut(;
             iteration = current_iteration(model),
             cut_exp = exp_agg_cut,
             cut_con = JuMP.@constraint(Benders.main(model), exp_agg_cut <= 0)
-        )
+        ),
     )
-    
+
     return 1
 end
 
-function _add_feasibility_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.FeasibilityCutTypeMulti)
+function _add_feasibility_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.FeasibilityCutTypeMulti,
+)
     for (i, exp_cut) in new_cuts[:feasibility]
         push!(
             model.cuts[:feasibility],
-            Benders.GeneralFeasibilityCut(
+            Benders.GeneralFeasibilityCut(;
                 iteration = current_iteration(model),
                 sub_model_index = i,
                 cut_exp = exp_cut,
                 cut_con = JuMP.@constraint(Benders.main(model), exp_cut <= 0)
-            )
+            ),
         )
     end
 
     return length(new_cuts[:feasibility])
 end
 
-function _add_feasibility_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.FeasibilityCutTypeAggregated)
+function _add_feasibility_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.FeasibilityCutTypeAggregated,
+)
     @error "FeasibilityCutTypeAggregated not implemented"
     return 0
 end
 
-function _add_feasibility_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.FeasibilityCutTypeAdaptive)
+function _add_feasibility_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.FeasibilityCutTypeAdaptive,
+)
     @error "FeasibilityCutTypeAdaptive not implemented"
     return 0
 end
 
-function _add_optimality_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.OptimalityCutTypeSingle)
+function _add_optimality_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.OptimalityCutTypeSingle,
+)
     exp_agg_cut = JuMP.AffExpr(0.0)
-    
+
     for (_, exp_cut) in new_cuts[:optimality]
         JuMP.add_to_expression!(exp_agg_cut, exp_cut)
     end
-    
+
     push!(
         model.cuts[:optimality],
-        Benders.GeneralOptimalityCut(
+        Benders.GeneralOptimalityCut(;
             iteration = current_iteration(model),
             cut_exp = exp_agg_cut,
             cut_con = JuMP.@constraint(Benders.main(model), sum(Benders.main(model)[:θ]) >= exp_agg_cut)
-        )
+        ),
     )
-    
+
     return 1
 end
 
-function _add_optimality_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.OptimalityCutTypeMulti)
+function _add_optimality_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.OptimalityCutTypeMulti,
+)
     for (i, exp_cut) in new_cuts[:optimality]
         push!(
             model.cuts[:optimality],
-            Benders.GeneralOptimalityCut(
+            Benders.GeneralOptimalityCut(;
                 iteration = current_iteration(model),
                 sub_model_index = i,
                 cut_exp = exp_cut,
                 cut_con = JuMP.@constraint(Benders.main(model), Benders.main(model)[:θ][i] >= exp_cut)
-            )
+            ),
         )
     end
 
     return length(new_cuts[:optimality])
 end
 
-function _add_optimality_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.OptimalityCutTypeAggregated)
+function _add_optimality_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.OptimalityCutTypeAggregated,
+)
     # TODO: it can happen that we add a lot of `\theta >= 0` cuts in OptimalityCutTypeMulti, due to the "trivial" sub-models.
     #       => catch linear dependent cuts and do not add them.
     # TODO: aggregating cuts is basically "averaging" them; we could: (1) weight the average, (2) cluster them before aggregating to generate `N >= 1` cuts
@@ -196,7 +227,11 @@ function _add_optimality_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Sym
     return 0
 end
 
-function _add_optimality_cuts(model::Benders.DecomposedModel, new_cuts::Dict{Symbol, Vector{Any}}, ::Benders.OptimalityCutTypeAdaptive)
+function _add_optimality_cuts(
+    model::Benders.DecomposedModel,
+    new_cuts::Dict{Symbol, Vector{Any}},
+    ::Benders.OptimalityCutTypeAdaptive,
+)
     @error "OptimalityCutTypeAdaptive not implemented"
     return 0
 end

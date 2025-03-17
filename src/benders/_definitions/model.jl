@@ -21,33 +21,24 @@
     # TODO: Allow storing "all_variables" somewhere for each model (and for main: before adding θ!)
     models::Vector{JuMP.Model} = Vector{JuMP.Model}[]
 
-    annotations = Dict{Symbol, Dict{Symbol, Any}}(
-        :variables => Dict{Symbol, Any}(),
-        :constraints => Dict{Symbol, Any}(),
-    )
+    annotations =
+        Dict{Symbol, Dict{Symbol, Any}}(:variables => Dict{Symbol, Any}(), :constraints => Dict{Symbol, Any}())
 
     # This allows for more than just `Benders.AbstractGeneralAttribute`, to allow (e.g.) `Solver.AbstractAttribute`.
-    attributes::Vector{_ExtModDecomposition.DecompositionAttributeContainer} = _ExtModDecomposition.DecompositionAttributeContainer[]
+    attributes::Vector{_ExtModDecomposition.DecompositionAttributeContainer} =
+        _ExtModDecomposition.DecompositionAttributeContainer[]
 
-    solutions = Dict{Symbol, Any}(
-        :current => Dict{Symbol, Any}(
-            :main => nothing,
-            :subs => nothing
-        ),
-    )
+    solutions = Dict{Symbol, Any}(:current => Dict{Symbol, Any}(:main => nothing, :subs => nothing))
 
     # TODO: Move that into a struct
     info = OrderedDict{Symbol, Any}(
-        :stats => OrderedDict(
-            :created => time_ns(),
-            :started => missing,
-        ),
+        :stats => OrderedDict(:created => time_ns(), :started => missing),
         :history => Vector{Dict{Symbol, Any}}(),
         :results => OrderedDict{Symbol, Any}(
             # TODO: merge this (that only holds "objective values") into `solutions`
             :main => OrderedDict{Symbol, Any}(),
             :subs => Vector{OrderedDict{Symbol, Any}}(),
-        )
+        ),
     )
 
     cuts = OrderedDict{Symbol, Vector{AbstractGeneralCut}}(

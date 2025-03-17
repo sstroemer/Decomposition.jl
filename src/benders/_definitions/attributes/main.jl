@@ -28,7 +28,7 @@ abstract type AbstractObjectiveType <: AbstractMainModelAttribute end
     infeasible_alpha_step::Float64
 
     safety_max_infeasible_resolve::Int = 10
-    
+
     _internal::Dict = Dict() # TODO: convert to proper fields
 end
 

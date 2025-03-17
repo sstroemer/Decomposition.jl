@@ -27,24 +27,28 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
                     JuMP.set_attribute(jm, "run_crossover", "on")
                 elseif JuMP.solver_name(jm) == "Gurobi"
                     # TODO: improve this keeping track of resetting
-                    reset_run_crossover = (JuMP.get_attribute(jm, "Crossover"), JuMP.get_attribute(jm, "Method"), JuMP.get_attribute(jm, "BarConvTol"))
+                    reset_run_crossover = (
+                        JuMP.get_attribute(jm, "Crossover"),
+                        JuMP.get_attribute(jm, "Method"),
+                        JuMP.get_attribute(jm, "BarConvTol"),
+                    )
                     JuMP.set_attribute(jm, "Crossover", 1)
                     JuMP.set_attribute(jm, "Method", 3)
                     JuMP.set_attribute(jm, "BarConvTol", 1e-8)
                 end
-                
+
                 JuMP.@objective(jm, Min, jm[:obj_full])
                 # TODO: only have the `reg_levelset_constraint` active if doing the actual level-set calculation
                 #       instead of:
                 JuMP.is_fixed(jm[:reg_levelset_L]) && JuMP.unfix(jm[:reg_levelset_L])
                 JuMP.optimize!(jm)
-                
-                candidate = jump_objective_lb(jm; require_feasibility=false)
+
+                candidate = jump_objective_lb(jm; require_feasibility = false)
                 if ismissing(candidate)
                     # TODO: fix this
                     # This is a workaround for HiGHS not finding a valid dual solution form the previous warm-start, but finding one by just re-running...
                     JuMP.optimize!(jm)
-                    candidate = jump_objective_lb(jm; require_feasibility=false)
+                    candidate = jump_objective_lb(jm; require_feasibility = false)
                     # TODO: afterwards remove the `require_feasibility` setting above too!
                 end
 
@@ -82,11 +86,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
 
             alpha = reg_attr.alpha
             for _ in 1:reg_attr.safety_max_infeasible_resolve
-                JuMP.fix(
-                    jm[:reg_levelset_L],
-                    alpha * ub + (1 - alpha) * lb;
-                    force=true
-                )
+                JuMP.fix(jm[:reg_levelset_L], alpha * ub + (1 - alpha) * lb; force = true)
 
                 # Re-optimize.
                 JuMP.optimize!(jm)

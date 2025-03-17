@@ -67,11 +67,15 @@ function set_attribute(model::AbstractDecomposedModel, attribute::AbstractDecomp
     return nothing
 end
 
-function has_attribute_type(model::AbstractDecomposedModel, type::Type{T}) where T <: AbstractDecompositionAttribute
+function has_attribute_type(model::AbstractDecomposedModel, type::Type{T}) where {T <: AbstractDecompositionAttribute}
     return any(ac.attribute isa type for ac in model.attributes)
 end
 
-function get_attributes(model::AbstractDecomposedModel, type::Type{T}; suppress_error::Bool = true) where T <: AbstractDecompositionAttribute
+function get_attributes(
+    model::AbstractDecomposedModel,
+    type::Type{T};
+    suppress_error::Bool = true,
+) where {T <: AbstractDecompositionAttribute}
     attributes = T[]
     for ac in model.attributes
         ac.attribute isa type && push!(attributes, ac.attribute)
@@ -94,7 +98,12 @@ function get_attributes(model::AbstractDecomposedModel, type::Type{T}; suppress_
     return attributes
 end
 
-function get_attribute(model::AbstractDecomposedModel, type::Type{T}; suppress_error::Bool = true, get_first::Bool = false) where T <: AbstractDecompositionAttribute
+function get_attribute(
+    model::AbstractDecomposedModel,
+    type::Type{T};
+    suppress_error::Bool = true,
+    get_first::Bool = false,
+) where {T <: AbstractDecompositionAttribute}
     attributes = get_attributes(model, type; suppress_error)
 
     isempty(attributes) && return nothing
@@ -107,7 +116,13 @@ function get_attribute(model::AbstractDecomposedModel, type::Type{T}; suppress_e
     return attributes[get_first ? 1 : end]::T
 end
 
-function get_attribute(model::AbstractDecomposedModel, type::Type{T}, field::Symbol, args...; get_first::Bool = false) where T <: AbstractDecompositionAttribute
+function get_attribute(
+    model::AbstractDecomposedModel,
+    type::Type{T},
+    field::Symbol,
+    args...;
+    get_first::Bool = false,
+) where {T <: AbstractDecompositionAttribute}
     # We need to force `suppress_error = false` here, otherwise a user might think the `nothing` may be the value of the
     # field, instead of the "attribute not found" return value.
     attributes = get_attributes(model, type; suppress_error = false)
@@ -136,9 +151,9 @@ end
 
 function cache_get(model::AbstractDecomposedModel, entry::Symbol)
     if !haskey(model._cache, entry)
-        model._cache[entry] = getfield(@__MODULE__, Symbol("_cache_build_", entry))(model)    
+        model._cache[entry] = getfield(@__MODULE__, Symbol("_cache_build_", entry))(model)
     end
-    
+
     return model._cache[entry]
 end
 
@@ -155,7 +170,7 @@ import .Benders
 # and lists: Copyright (c) 2017: Iain Dunning, Joey Huchette, Miles Lubin, and contributors.
 for sym in names(@__MODULE__; all = true)
     (sym in [Symbol(@__MODULE__), :eval, :include]) && continue
-    sym_string = string(sym)   
+    sym_string = string(sym)
     (startswith(sym_string, "_") || startswith(sym_string, "@_")) && continue
     Base.isidentifier(sym) || (startswith(sym_string, "@") && Base.isidentifier(sym_string[2:end])) || continue
     @eval export $sym

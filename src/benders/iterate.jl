@@ -20,10 +20,10 @@ function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
 
     @timeit model.timer "sub" begin
         # TODO: also remove this and reactivate below
-        for i in 1:(length(model.models) - 1)
+        for i in 1:(length(model.models)-1)
             @timeit model.timer "[$i]" begin
-                execute!(model, Benders.Query.SolveSub(index=i))
-                execute!(model, Benders.Query.ExtractResultsSub(index=i))
+                execute!(model, Benders.Query.SolveSub(; index = i))
+                execute!(model, Benders.Query.ExtractResultsSub(; index = i))
             end
         end
 
@@ -53,14 +53,19 @@ function iterate!(model::Benders.DecomposedModel; nthreads::Int = -1)
 
         added_cuts
     end
-    
+
     # Pass added cuts to `next_iteration!`.
     next_iteration!(model, added_cuts)
 
     return check_termination(model)
 end
 
-function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bool=get_attribute(model, Benders.Config.ModelVerbosity).verbosity > 1, assumed_pcores::Int = 16)
+function next_iteration!(
+    model::Benders.DecomposedModel,
+    added_cuts;
+    verbose::Bool = get_attribute(model, Benders.Config.ModelVerbosity).verbosity > 1,
+    assumed_pcores::Int = 16,
+)
     nof_feas_cuts, nof_opt_cuts = added_cuts
     iter = current_iteration(model)
     curr_time = time_ns()
@@ -100,8 +105,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
     # Estimate "batched" parallel processing of sub-model timings.
     # TODO: Reimplement this for TimerOutputs
     time_est = (
-        get_main_time(model) +
-        sum(get_sub_time(model, index=i) for i in 1:length(Benders.subs(model))) -
+        get_main_time(model) + sum(get_sub_time(model; index = i) for i in 1:length(Benders.subs(model))) -
         total_wall_time(model)
     )
     # _t = est_Δt_wall[:subs]
@@ -128,7 +132,10 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
         :upper_bound => ub,
         :gap_abs => gap_abs(lb, ub),
         :gap_rel => gap_rel(lb, ub),
-        :added_cuts => has_attribute_type(model, Benders.CutTypeMISFSZ) ? OrderedDict(:feasibility => 0, :optimality => 0, :misfsz => nof_feas_cuts+nof_opt_cuts) : OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts, :misfsz => 0),
+        :added_cuts =>
+            has_attribute_type(model, Benders.CutTypeMISFSZ) ?
+            OrderedDict(:feasibility => 0, :optimality => 0, :misfsz => nof_feas_cuts + nof_opt_cuts) :
+            OrderedDict(:feasibility => nof_feas_cuts, :optimality => nof_opt_cuts, :misfsz => 0),
         :added_cuts_con => new_cuts,
     )
     push!(model.info[:history], entry)
@@ -144,7 +151,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
                 "│        │      objective bound      │      current best gap     │    est. execution time    │   added cuts    │",
                 "├────────┼─────────────┬─────────────┼───────────────────────────┤─────────────┬─────────────┤────────┬────────┤",
                 "│   iter │       lower │       upper │    absolute │    relative │    wall [s] │     cpu [s] │  feas. │   opt. │",
-                "├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤",  
+                "├────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼─────────────┼────────┼────────┤",
             ]
             append!(model.log, motd)
             println.(motd)
@@ -162,7 +169,7 @@ function next_iteration!(model::Benders.DecomposedModel, added_cuts; verbose::Bo
                 Printf.@sprintf("%11.2f", total_cpu_time(model) / 1e9),
                 length(model.cuts[:feasibility]) + count(c -> c isa Benders.MISFSZFeasibilityCut, model.cuts[:misfsz]),
                 length(model.cuts[:optimality]) + count(c -> c isa Benders.MISFSZOptimalityCut, model.cuts[:misfsz]),
-            )
+            ),
         )
     end
 

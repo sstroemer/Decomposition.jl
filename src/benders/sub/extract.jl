@@ -2,7 +2,7 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractRe
     tol = sqrt(eps(Float64))    # TODO
 
     @timeit model.timer "extract solution" begin
-        jm = Benders.sub(model; index=query.index)
+        jm = Benders.sub(model; index = query.index)
         res = model.info[:results][:subs][query.index]
 
         if has_attribute_type(model, Benders.CutTypeMISFSZ)
@@ -13,10 +13,10 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractRe
             if abs(π_0) > tol
                 # The last cut was an "optimality" cut, so it is "feasible".
                 # NOTE: Using `abs(...)` since `π_0` may have a negative sign (if coming from conic duality).
-                res[:obj_val_primal] = res[:obj_val_dual] = (
-                    JuMP.value(jm[:obj_base]) + 
-                    JuMP.value(jm[:obj_param_π_0]) / π_0  # TODO: or should it be `obj_param` here?
-                )
+                res[:obj_val_primal] =
+                    res[:obj_val_dual] = (
+                        JuMP.value(jm[:obj_base]) + JuMP.value(jm[:obj_param_π_0]) / π_0  # TODO: or should it be `obj_param` here?
+                    )
 
                 # TODO: NOTE/WRITING about the comment below
 
@@ -39,8 +39,8 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.ExtractRe
             # TODO: properly refactor this, like above, and then account for it everywhere
 
             # TODO: require_feasibility=true
-            isaf = JuMP.is_solved_and_feasible(Benders.sub(model; index=query.index))
-            sol_obj = jump_objective_all(Benders.sub(model; index=query.index); require_feasibility=false)
+            isaf = JuMP.is_solved_and_feasible(Benders.sub(model; index = query.index))
+            sol_obj = jump_objective_all(Benders.sub(model; index = query.index); require_feasibility = false)
 
             model.info[:results][:subs][query.index][:obj] = isaf ? sol_obj.primal : missing
             model.info[:results][:subs][query.index][:obj_dual] = sol_obj.dual

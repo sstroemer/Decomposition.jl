@@ -12,7 +12,11 @@ end
 
 function get_obj_base_main(model::Benders.DecomposedModel)
     if !haskey(Benders.main(model), :obj_base)
-        JuMP.@expression(Benders.main(model), obj_base, model.lpmd.c_offset + model.lpmd.c[model.vis[1]]' * Benders.main(model)[:x].data)
+        JuMP.@expression(
+            Benders.main(model),
+            obj_base,
+            model.lpmd.c_offset + model.lpmd.c[model.vis[1]]' * Benders.main(model)[:x].data
+        )
     end
 
     return Benders.main(model)[:obj_base]
