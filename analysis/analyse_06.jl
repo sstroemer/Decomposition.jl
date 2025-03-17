@@ -6,7 +6,7 @@ EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
 RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
 RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
 RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
-VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
+VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
 # iterations, sub time distribution

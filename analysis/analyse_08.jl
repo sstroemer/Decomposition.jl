@@ -6,10 +6,10 @@ EXPERIMENT_NR = split(split(basename(@__FILE__), ".")[1], "_")[2]
 RESULT_DIR = normpath(@__DIR__, "..", "experiments", "out")
 RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR)"), readdir(RESULT_DIR))))
 RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
-VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
+VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-exp_tol = collect(0:10)
+exp_tol = collect(0:3)
 tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
 
 y = Dict(
@@ -21,6 +21,8 @@ for r in RUNS
     dir = joinpath(RUN_DIR, r)
 
     for i in exp_tol
+        @show dir i
+
         history = JSON3.read(joinpath(dir, "history_$(i).json"))
         # timings = JSON3.read(joinpath(dir, "timer_$(i).json"))
 
