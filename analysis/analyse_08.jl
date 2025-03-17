@@ -12,46 +12,46 @@ hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 exp_tol = collect(0:3)
 tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
 
-y = Dict(
-    i => Dict{String, Any}("iter" => nothing, "time" => nothing, "lb" => nothing, "ub" => nothing) for i in exp_tol
-)
+y = Dict(i => Dict{String, Any}("iter_1" => 0, "time_1" => 0, "iter_5" => 0, "time_5" => 0) for i in exp_tol)
 
 # Extract results.
 for r in RUNS
     dir = joinpath(RUN_DIR, r)
 
     for i in exp_tol
-        @show dir i
-
         history = JSON3.read(joinpath(dir, "history_$(i).json"))
         # timings = JSON3.read(joinpath(dir, "timer_$(i).json"))
 
-        y[i]["iter"] = [h["k"] for h in history]
-
         t0 = history[1]["t"]["timestamp"]
-        y[i]["time"] = hcomb(y[i]["time"], [(h["t"]["timestamp"] - t0) for h in history])
 
-        lb, ub = [-Inf], [+Inf]
-        for j in eachindex(history)
-            push!(lb, max(lb[end], history[j]["lb"]))
-            push!(ub, min(ub[end], history[j]["ub"]))
+        for entry in history
+            gap = (entry["ub"] - entry["lb"]) / entry["ub"]
+            if gap <= 0.01
+                y[i]["iter_1"] += entry["k"]
+                y[i]["time_1"] += entry["t"]["timestamp"] - t0
+                break
+            end
         end
-        y[i]["lb"] = hcomb(y[i]["lb"], lb[2:end])
-        y[i]["ub"] = hcomb(y[i]["ub"], ub[2:end])
+
+        for entry in history
+            gap = (entry["ub"] - entry["lb"]) / entry["ub"]
+            if gap <= 0.05
+                y[i]["iter_5"] += entry["k"]
+                y[i]["time_5"] += entry["t"]["timestamp"] - t0
+                break
+            end
+        end
     end
 end
 
-# Average results and convert to seconds.
+# Normalize.
+base_iter = y[0]["iter_1"] / 100.0
+base_time = y[0]["time_1"] / 100.0
 for i in exp_tol
-    y[i]["time"] = vec(mean(y[i]["time"]; dims = 2)) ./ 1e9
-    y[i]["lb"] = vec(mean(y[i]["lb"]; dims = 2))
-    y[i]["ub"] = vec(mean(y[i]["ub"]; dims = 2))
-end
-
-# Precalculate relative gap.
-for i in exp_tol
-    y[i]["gap"] = (y[i]["ub"] - y[i]["lb"]) ./ y[i]["ub"]
-    y[i]["gap_reached"] = [findfirst(<=(th), y[i]["gap"]) for th in [0.1, 0.05, 0.025, 0.01]]
+    y[i]["iter_1"] /= base_iter
+    y[i]["time_1"] /= base_time
+    y[i]["iter_5"] /= base_iter
+    y[i]["time_5"] /= base_time
 end
 
 # Plot.
@@ -81,12 +81,12 @@ function make_plot(traces, layout)
             gridcolor = "lightgray",
         ),
         :legend => PlotlyJS.attr(;
-            x = 0.10,
+            x = 0.50,
             y = 0.95,
             bordercolor = "black",
             borderwidth = 1,
-            xanchor = "left",
-            yanchor = "top",
+            xanchor = "center",
+            yanchor = "bottom",
             orientation = "h",
         ),
         :plot_bgcolor => "white",
@@ -98,123 +98,125 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
-opacity = ["ff", "cf", "b0", "9f"]
+x = vcat(["default (1e-6)"], ["1e-$(i)" for i in exp_tol[2:end]])
+ymax = maximum(maximum.(values.(values(y))))
 
-iter_max = maximum(y[i]["iter"][end] for i in exp_tol)
-time_max = maximum(y[i]["time"][end] for i in exp_tol)
-base_iter = y[0]["iter"][end] / 100.0
-base_time = y[0]["time"][end] / 100.0
-ymax = max(iter_max / base_iter, time_max / base_time) * 1.05
-x = [(e == 0) ? "" : "1e-$(e)" for e in exp_tol]
-
+# Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()
 push!(
     traces,
-    scatter(;
-        zorder = -1,
+    bar(;
         x = x,
-        y = fill(100.0, length(x)),
-        mode = "lines",
-        showlegend = false,
-        line = PlotlyJS.attr(; color = "black", dash = "dash"),
+        y = vcat(y[0]["iter_1"], zeros(length(exp_tol) - 1)),
+        offsetgroup = 1,
+        legendgroup = "concurrent",
+        name = "1% gap",
+        marker_color = "#9c0000ff",
+        legendgrouptitle = PlotlyJS.attr(; text = "concurrent with crossover"),
     ),
 )
-for (i, gr) in enumerate(y[0]["gap_reached"])
-    push!(
-        traces,
-        bar(;
-            zorder = -2,
-            x = x,
-            y = vcat(y[0]["iter"][gr] / base_iter, zeros(length(exp_tol) - 1)),
-            marker_color = "#ff4800$(opacity[i])",
-            legendgrouptitle = PlotlyJS.attr(; text = "concurrent"),
-            legendgroup = "concurrent",
-            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
-        ),
-    )
-    push!(
-        traces,
-        bar(;
-            zorder = 1,
-            x = x,
-            y = vcat(0.0, [y[e]["iter"][y[e]["gap_reached"][i]] / base_iter for e in exp_tol[2:end]]),
-            marker_color = "#0026ff$(opacity[i])",
-            legendgrouptitle = PlotlyJS.attr(; text = "barrier"),
-            legendgroup = "barrier",
-            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
-        ),
-    )
-end
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(y[0]["iter_5"], zeros(length(exp_tol) - 1)),
+        offsetgroup = 2,
+        legendgroup = "concurrent",
+        name = "5% gap",
+        marker_color = "#9c000077",
+        legendgrouptitle = PlotlyJS.attr(; text = "concurrent with crossover"),
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(0.0, [y[i]["iter_1"] for i in exp_tol[2:end]]),
+        offsetgroup = 1,
+        legendgroup = "barrier",
+        name = "1% gap",
+        marker_color = "#00009cff",
+        legendgrouptitle = PlotlyJS.attr(; text = "barrier w/o crossover"),
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(0.0, [y[i]["iter_5"] for i in exp_tol[2:end]]),
+        offsetgroup = 2,
+        legendgroup = "barrier",
+        name = "5% gap",
+        marker_color = "#00009c77",
+        legendgrouptitle = PlotlyJS.attr(; text = "barrier w/o crossover"),
+    ),
+)
 savefig(
     make_plot(
         traces,
-        (
-            barmode = "overlay",
-            xaxis_title = "barrier tolerance",
-            yaxis_title = "iterations (%)",
-            yaxis_range = [0, ymax],
-        ),
+        (xaxis_title = "barrier convergence tolerance", yaxis_title = "iterations (%)", yaxis_range = [0, ymax * 1.1]),
     ),
     joinpath(VIZ_DIR, "iterations.png");
-    width = 700,
-    height = 550,
+    width = 500,
+    height = 500,
 )
 
+# Plot time.
 traces = Vector{PlotlyJS.GenericTrace}()
 push!(
     traces,
-    scatter(;
-        zorder = -1,
+    bar(;
         x = x,
-        y = fill(100.0, length(x)),
-        mode = "lines",
-        showlegend = false,
-        line = PlotlyJS.attr(; color = "black", dash = "dash"),
+        y = vcat(y[0]["time_1"], zeros(length(exp_tol) - 1)),
+        offsetgroup = 1,
+        legendgroup = "concurrent",
+        name = "1% gap",
+        marker_color = "#9c0000ff",
+        legendgrouptitle = PlotlyJS.attr(; text = "concurrent with crossover"),
     ),
 )
-for (i, gr) in enumerate(y[0]["gap_reached"])
-    push!(
-        traces,
-        bar(;
-            zorder = -2,
-            x = x,
-            y = vcat(y[0]["time"][gr] / base_time, zeros(length(exp_tol) - 1)),
-            marker_color = "#ff4800$(opacity[i])",
-            legendgrouptitle = PlotlyJS.attr(; text = "concurrent"),
-            legendgroup = "concurrent",
-            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
-        ),
-    )
-    push!(
-        traces,
-        bar(;
-            zorder = 1,
-            x = x,
-            y = vcat(0.0, [y[e]["time"][y[e]["gap_reached"][i]] / base_time for e in exp_tol[2:end]]),
-            marker_color = "#0026ff$(opacity[i])",
-            legendgrouptitle = PlotlyJS.attr(; text = "barrier"),
-            legendgroup = "barrier",
-            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
-        ),
-    )
-end
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(y[0]["time_5"], zeros(length(exp_tol) - 1)),
+        offsetgroup = 2,
+        legendgroup = "concurrent",
+        name = "5% gap",
+        marker_color = "#9c000077",
+        legendgrouptitle = PlotlyJS.attr(; text = "concurrent with crossover"),
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(0.0, [y[i]["time_1"] for i in exp_tol[2:end]]),
+        offsetgroup = 1,
+        legendgroup = "barrier",
+        name = "1% gap",
+        marker_color = "#00009cff",
+        legendgrouptitle = PlotlyJS.attr(; text = "barrier w/o crossover"),
+    ),
+)
+push!(
+    traces,
+    bar(;
+        x = x,
+        y = vcat(0.0, [y[i]["time_5"] for i in exp_tol[2:end]]),
+        offsetgroup = 2,
+        legendgroup = "barrier",
+        name = "5% gap",
+        marker_color = "#00009c77",
+        legendgrouptitle = PlotlyJS.attr(; text = "barrier w/o crossover"),
+    ),
+)
 savefig(
     make_plot(
         traces,
-        (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax]),
+        (xaxis_title = "barrier convergence tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax * 1.1]),
     ),
     joinpath(VIZ_DIR, "time.png");
-    width = 700,
-    height = 550,
-)
-
-savefig(
-    make_plot(
-        traces,
-        (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax]),
-    ),
-    joinpath(VIZ_DIR, "time.png");
-    scale = 2,
-    width = 700,
-    height = 550,
+    width = 500,
+    height = 500,
 )
