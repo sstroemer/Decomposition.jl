@@ -46,6 +46,8 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, tol::Float64)
             JuMP.set_attribute(sm, "BarConvTol", tol)
         else
             JuMP.set_attribute(sm, "Method", 3)
+            JuMP.set_attribute(sm, "Crossover", 1)
+            JuMP.set_attribute(sm, "BarConvTol", 1e-8)
         end
     end
 
