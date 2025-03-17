@@ -74,7 +74,9 @@ for i in 0:50
         maximum(maximum(abs.(JuMP.value.(m[:z_pos]))) for m in Benders.subs(model_gurobi)),
     )
 
-    if max_slack > 1e-3
+    # Cut off if we encounter a slack of at least 1 (MW / ...).
+    # Setting this too low may otherwise wrongfully trigger for a 0.01 convergence tolerance.
+    if max_slack >= 1.0
         println("Ecountered non-zero slack: $(max_slack)")
         break
     end
