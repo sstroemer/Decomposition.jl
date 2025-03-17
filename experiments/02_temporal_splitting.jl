@@ -5,12 +5,10 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-
 GRB_ENV = Gurobi.Env()
 EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
-
 
 function experiment(jump_model::JuMP.Model; T::Int64, n::Int64)
     model = Benders.DecomposedModel(;
@@ -56,7 +54,7 @@ for n in [1, 4, 12, 60, 365]
     model = experiment(jump_model; T = 8760, n = n)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(n).json"), TimerOutputs.todict(model.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(n).json"), TimerOutputs.todict(model.timer); allow_inf = true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(n).json"),
         [
@@ -67,6 +65,6 @@ for n in [1, 4, 12, 60, 365]
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
         ];
-        allow_inf=true,
+        allow_inf = true,
     )
 end

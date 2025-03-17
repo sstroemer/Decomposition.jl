@@ -56,8 +56,15 @@ attr = Dict(
     :ex2 => [Solver.AlgorithmSimplex(; model = :main), Benders.Main.VirtualSoftBounds(0.0, 1e6)],
     :ex3 => [Solver.AlgorithmIPM(; model = :main)],
     :ex4 => [Benders.Main.VirtualSoftBounds(0.0, 1e6), Solver.AlgorithmIPM(; model = :main)],
-    :ex5 => [Solver.AlgorithmIPM(; model = :main), Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2)],
-    :ex6 => [Benders.Main.VirtualSoftBounds(0.0, 1e6), Solver.AlgorithmIPM(; model = :main), Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2)],
+    :ex5 => [
+        Solver.AlgorithmIPM(; model = :main),
+        Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
+    ],
+    :ex6 => [
+        Benders.Main.VirtualSoftBounds(0.0, 1e6),
+        Solver.AlgorithmIPM(; model = :main),
+        Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
+    ],
 )
 
 # Make sure everything's compiled using a small model first.
@@ -74,7 +81,7 @@ for (k, v) in attr
     model = experiment(jump_model, v; T = 8760, n = 60)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf = true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(k).json"),
         [
@@ -85,6 +92,6 @@ for (k, v) in attr
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
         ];
-        allow_inf=true,
+        allow_inf = true,
     )
 end

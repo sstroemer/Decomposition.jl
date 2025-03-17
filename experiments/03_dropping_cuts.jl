@@ -5,12 +5,10 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-
 GRB_ENV = Gurobi.Env()
 EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
-
 
 function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
     model = Benders.DecomposedModel(;
@@ -21,12 +19,12 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
     )
 
     if drop > 0
-        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold=1e-8))
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold = 1e-8))
     elseif drop == -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-8, rtol_const=1e-8))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-8, rtol_const = 1e-8))
     elseif drop < -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-8, rtol_const=1e-8))
-        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold=1e-8))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-8, rtol_const = 1e-8))
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold = 1e-8))
     end
 
     set_attribute.(
@@ -66,5 +64,5 @@ for drop in [0, -1, 40, 50, 60, 70, 80, 90]
     model = experiment(jump_model; T = 8760, n = 60, drop)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf = true)
 end

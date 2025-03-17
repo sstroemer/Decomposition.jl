@@ -5,12 +5,10 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-
 GRB_ENV = Gurobi.Env()
 EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
-
 
 function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, tol::Float64)
     model = Benders.DecomposedModel(;
@@ -32,7 +30,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, tol::Float64)
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2),
+            Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
             Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
         ],
     )
@@ -74,10 +72,10 @@ jump_model = jump_model_from_file("national_scale_8760.mps")
 # Now run the experiment.
 for i in 0:10
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(i)")
-    model = experiment(jump_model; T = 8760, n = 6, tol = (i == 0) ? 0.0 : 10.0 ^ (-i))
+    model = experiment(jump_model; T = 8760, n = 6, tol = (i == 0) ? 0.0 : 10.0^(-i))
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf = true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(i).json"),
         [
@@ -88,6 +86,6 @@ for i in 0:10
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
         ];
-        allow_inf=true,
+        allow_inf = true,
     )
 end

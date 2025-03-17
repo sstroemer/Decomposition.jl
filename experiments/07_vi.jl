@@ -5,19 +5,17 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-
 GRB_ENV = Gurobi.Env()
 EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
-
 
 function cb_post_annotate(model; τ::Float64, merge_first::Bool)
     merge_first || τ > 0.0 || return nothing
 
     n_sub_models = count((k) -> startswith(string(k), "sub_"), keys(model.annotations[:variables]))
     ml = maximum(length(v) for (k, v) in model.annotations[:variables] if startswith(string(k), "sub_"))
-    
+
     model.annotations[:variables][:main_vi_sub] = Int64[]
     model.annotations[:constraints][:main_ci_sub] = Int64[]
     del_sub = []
@@ -29,7 +27,7 @@ function cb_post_annotate(model; τ::Float64, merge_first::Bool)
             push!(del_sub, si)
         end
     end
-    
+
     reduce = 0
     for si in 1:n_sub_models
         if si in del_sub
@@ -73,9 +71,9 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
         ],
     )
 
-    feasibility && set_attribute(model, Solver.ExtractDualRay(model = :sub))
+    feasibility && set_attribute(model, Solver.ExtractDualRay(; model = :sub))
     feasibility && set_attribute(model, Benders.FeasibilityCutTypeMulti())
-    feasibility || set_attribute(model, Benders.Sub.RelaxationLinked(penalty = 1e6))
+    feasibility || set_attribute(model, Benders.Sub.RelaxationLinked(; penalty = 1e6))
 
     finalize!(model; cb_post_annotate = (model) -> cb_post_annotate(model; τ, merge_first))
 
@@ -110,9 +108,9 @@ for (k, v) in attr
     model = experiment(jump_model; T = 8760, n = 60, v...)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf = true)
 end
 
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> baseline")
 model = experiment(jump_model; T = 8760, n = 60, τ = 0.0, merge_first = false, feasibility = false)
-JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer); allow_inf=true)
+JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer); allow_inf = true)

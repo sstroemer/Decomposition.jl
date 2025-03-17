@@ -5,20 +5,13 @@ import TimerOutputs, JSON3, UUIDs
 import JuMP, HiGHS, Gurobi
 using Decomposition
 
-
 GRB_ENV = Gurobi.Env()
 EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
 
-
 function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Float64)
-    model = Benders.DecomposedModel(;
-        jump_model,
-        annotator = Calliope(),
-        f_opt_main = f,
-        f_opt_sub = f,
-    )
+    model = Benders.DecomposedModel(; jump_model, annotator = Calliope(), f_opt_main = f, f_opt_sub = f)
 
     set_attribute.(
         model,
@@ -32,7 +25,7 @@ function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Floa
             Benders.Sub.RelaxationLinked(; penalty),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Main.RegularizationLevelSet(alpha = 0.1, infeasible_alpha_step = 0.2),
+            Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
             Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
         ],
     )
@@ -53,7 +46,13 @@ function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Floa
 end
 
 # Make sure everything's compiled using a small model first.
-experiment(jump_model_from_file("national_scale_120.mps"), () -> Gurobi.Optimizer(GRB_ENV); T = 120, n = 3, penalty = 1e6)
+experiment(
+    jump_model_from_file("national_scale_120.mps"),
+    () -> Gurobi.Optimizer(GRB_ENV);
+    T = 120,
+    n = 3,
+    penalty = 1e6,
+)
 experiment(jump_model_from_file("national_scale_120.mps"), () -> HiGHS.Optimizer(); T = 120, n = 3, penalty = 1e6)
 
 # Load JuMP model.
@@ -74,7 +73,7 @@ for i in 0:50
         maximum(maximum(abs.(JuMP.value.(m[:z_neg]))) for m in Benders.subs(model_gurobi)),
         maximum(maximum(abs.(JuMP.value.(m[:z_pos]))) for m in Benders.subs(model_gurobi)),
     )
-    
+
     if max_slack > 1e-3
         println("Ecountered non-zero slack: $(max_slack)")
         break
@@ -83,6 +82,6 @@ for i in 0:50
     model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 60, penalty = π)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer); allow_inf=true)
-    JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer); allow_inf = true)
+    JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer); allow_inf = true)
 end
