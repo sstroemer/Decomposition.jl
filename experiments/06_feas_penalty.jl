@@ -50,7 +50,7 @@ experiment(jump_model_from_file("national_scale_120.mps"), () -> Gurobi.Optimize
 experiment(jump_model_from_file("national_scale_120.mps"), () -> HiGHS.Optimizer(); T = 120, n = 3, penalty = 1e6)
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_744.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
 for i in 0:50
@@ -61,7 +61,7 @@ for i in 0:50
     end
 
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(π)")
-    model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 744, n = 8, penalty = π)
+    model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 8760, n = 60, penalty = π)
 
     max_slack = max(
         maximum(maximum(abs.(JuMP.value.(m[:z_neg]))) for m in Benders.subs(model_gurobi)),
@@ -73,7 +73,7 @@ for i in 0:50
         break
     end
 
-    model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 744, n = 8, penalty = π)
+    model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 60, penalty = π)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer))
