@@ -28,7 +28,7 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 1000),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 500),
         ],
     )
 
@@ -57,12 +57,12 @@ for (k, v) in attr
 end
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_2184.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
 for (k, v) in attr
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(k)")
-    model = experiment(jump_model, v; T = 2184, n = 12)
+    model = experiment(jump_model, v; T = 8760, n = 60)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer))

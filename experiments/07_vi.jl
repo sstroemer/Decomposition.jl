@@ -69,7 +69,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
             Benders.OptimalityCutTypeMulti(),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 1000),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 500),
         ],
     )
 
@@ -102,17 +102,17 @@ for (k, v) in attr
 end
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_744.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
 for (k, v) in attr
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(k)")
-    model = experiment(jump_model; T = 744, n = 12, v...)
+    model = experiment(jump_model; T = 8760, n = 60, v...)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer))
 end
 
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> baseline")
-model = experiment(jump_model; T = 744, n = 12, τ = 0.0, merge_first = false, feasibility = false)
+model = experiment(jump_model; T = 8760, n = 60, τ = 0.0, merge_first = false, feasibility = false)
 JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer))

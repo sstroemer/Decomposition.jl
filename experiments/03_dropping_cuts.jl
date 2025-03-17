@@ -23,9 +23,9 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
     if drop > 0
         set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold=1e-8))
     elseif drop == -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-3, rtol_const=1e-3))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-8, rtol_const=1e-8))
     elseif drop < -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-3, rtol_const=1e-3))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(rtol_coeff=1e-8, rtol_const=1e-8))
         set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold=1e-8))
     end
 
@@ -41,7 +41,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 1000),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 500),
         ],
     )
 
@@ -59,11 +59,11 @@ for drop in [-75, -1, 0, 75]
 end
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_2184.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
-for drop in [-75, -50, -40, -35, -30, -1, 0]
-    model = experiment(jump_model; T = 2184, n = 42, drop)
+for drop in [0, -1, 30, 40, 50, 60, 70, 80, 90]
+    model = experiment(jump_model; T = 8760, n = 60, drop)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer))
