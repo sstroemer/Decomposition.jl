@@ -34,6 +34,8 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
 
     set_attribute.(model, attributes)
 
+    finalize!(model)
+
     if any(a isa Benders.Main.RegularizationLevelSet for a in attributes)
         # Explicitly set this for the level set.
         if JuMP.solver_name(Benders.main(model)) == "Gurobi"
@@ -42,8 +44,6 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
             JuMP.set_attribute(Benders.main(model), "ipm_optimality_tolerance", 1e-3)
         end
     end
-
-    finalize!(model)
 
     while !iterate!(model; nthreads = -1)
     end
