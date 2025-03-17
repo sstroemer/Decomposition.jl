@@ -18,13 +18,15 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
         f_opt_sub = () -> Gurobi.Optimizer(GRB_ENV),
     )
 
+    # NOTE: 1e-6 is the default FeasibilityTol for Gurobi.
+
     if drop > 0
-        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold = 1e-8))
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = drop, threshold = 1e-6))
     elseif drop == -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-8, rtol_const = 1e-8))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-6, rtol_const = 1e-6))
     elseif drop < -1
-        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-8, rtol_const = 1e-8))
-        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold = 1e-8))
+        set_attribute(model, Benders.CutPreprocessingRemoveRedundant(; rtol_coeff = 1e-6, rtol_const = 1e-6))
+        set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold = 1e-6))
     end
 
     set_attribute.(
