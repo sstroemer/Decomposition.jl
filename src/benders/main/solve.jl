@@ -25,6 +25,12 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
                     # TODO: remove this workaround
                     reset_run_crossover = JuMP.get_attribute(jm, "run_crossover")
                     JuMP.set_attribute(jm, "run_crossover", "on")
+                elseif JuMP.solver_name(jm) == "Gurobi"
+                    # TODO: improve this keeping track of resetting
+                    reset_run_crossover = (JuMP.get_attribute(jm, "Crossover"), JuMP.get_attribute(jm, "Method"), JuMP.get_attribute(jm, "BarConvTol"))
+                    JuMP.set_attribute(jm, "Crossover", 1)
+                    JuMP.set_attribute(jm, "Method", 3)
+                    JuMP.set_attribute(jm, "BarConvTol", 1e-8)
                 end
                 
                 JuMP.@objective(jm, Min, jm[:obj_full])
@@ -55,6 +61,11 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
                 if JuMP.solver_name(jm) == "HiGHS" && !isnothing(reset_run_crossover)
                     # TODO: remove this workaround
                     JuMP.set_attribute(jm, "run_crossover", reset_run_crossover)
+                elseif JuMP.solver_name(jm) == "Gurobi" && !isnothing(reset_run_crossover)
+                    # TODO: remove this workaround
+                    JuMP.set_attribute(jm, "Crossover", reset_run_crossover[1])
+                    JuMP.set_attribute(jm, "Method", reset_run_crossover[2])
+                    JuMP.set_attribute(jm, "BarConvTol", reset_run_crossover[3])
                 end
 
                 candidate
