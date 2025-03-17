@@ -69,7 +69,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
             Benders.OptimalityCutTypeMulti(),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 500),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
         ],
     )
 

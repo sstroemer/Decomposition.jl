@@ -28,7 +28,7 @@ function experiment(jump_model::JuMP.Model, attributes::Vector; T::Int64, n::Int
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 500),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
         ],
     )
 
