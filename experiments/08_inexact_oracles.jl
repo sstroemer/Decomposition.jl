@@ -70,7 +70,7 @@ for i in 0:10
     model = experiment(jump_model; T = 8760, n = 6, tol = (i == 0) ? 0.0 : 10.0 ^ (-i))
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer))
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf=true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(i).json"),
         [
@@ -80,6 +80,7 @@ for i in 0:10
                 "lb" => entry[:lower_bound],
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
-        ],
+        ];
+        allow_inf=true,
     )
 end

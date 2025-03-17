@@ -66,5 +66,5 @@ for drop in [0, -1, 30, 40, 50, 60, 70, 80, 90]
     model = experiment(jump_model; T = 8760, n = 60, drop)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer))
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf=true)
 end

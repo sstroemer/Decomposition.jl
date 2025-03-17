@@ -76,6 +76,6 @@ for i in 0:50
     model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 60, penalty = π)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer))
-    JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer))
+    JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer); allow_inf=true)
+    JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer); allow_inf=true)
 end

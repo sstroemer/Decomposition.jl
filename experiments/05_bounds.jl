@@ -65,7 +65,7 @@ for (k, v) in attr
     model = experiment(jump_model, v; T = 8760, n = 60)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer))
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf=true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(k).json"),
         [
@@ -75,6 +75,7 @@ for (k, v) in attr
                 "lb" => entry[:lower_bound],
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
-        ],
+        ];
+        allow_inf=true,
     )
 end

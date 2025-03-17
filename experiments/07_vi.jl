@@ -110,9 +110,9 @@ for (k, v) in attr
     model = experiment(jump_model; T = 8760, n = 60, v...)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer))
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf=true)
 end
 
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> baseline")
 model = experiment(jump_model; T = 8760, n = 60, τ = 0.0, merge_first = false, feasibility = false)
-JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer))
+JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer); allow_inf=true)

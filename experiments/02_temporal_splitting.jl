@@ -56,7 +56,7 @@ for n in [1, 4, 12, 60, 365]
     model = experiment(jump_model; T = 8760, n = n)
 
     # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(n).json"), TimerOutputs.todict(model.timer))
+    JSON3.write(joinpath(RESULT_DIR, "timer_$(n).json"), TimerOutputs.todict(model.timer); allow_inf=true)
     JSON3.write(
         joinpath(RESULT_DIR, "history_$(n).json"),
         [
@@ -66,6 +66,7 @@ for n in [1, 4, 12, 60, 365]
                 "lb" => entry[:lower_bound],
                 "ub" => entry[:upper_bound],
             ) for entry in model.info[:history]
-        ],
+        ];
+        allow_inf=true,
     )
 end
