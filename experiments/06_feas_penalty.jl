@@ -67,7 +67,7 @@ for i in 0:50
     end
 
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(π)")
-    model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 8760, n = 60, penalty = π)
+    model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 8760, n = 24, penalty = π)
 
     max_slack = max(
         maximum(maximum(abs.(JuMP.value.(m[:z_neg]))) for m in Benders.subs(model_gurobi)),
@@ -79,7 +79,7 @@ for i in 0:50
         break
     end
 
-    model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 60, penalty = π)
+    model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 24, penalty = π)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer); allow_inf = true)

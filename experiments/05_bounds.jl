@@ -78,7 +78,7 @@ jump_model = jump_model_from_file("national_scale_8760.mps")
 # Now run the experiment.
 for (k, v) in attr
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(k)")
-    model = experiment(jump_model, v; T = 8760, n = 60)
+    model = experiment(jump_model, v; T = 8760, n = 24)
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf = true)

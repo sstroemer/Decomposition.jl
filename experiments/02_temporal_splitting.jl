@@ -49,7 +49,7 @@ experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3)
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
-for n in [1, 4, 12, 60, 365]
+for n in [1, 4, 12, 24, 60, 365]
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(n)")
     model = experiment(jump_model; T = 8760, n = n)
 
