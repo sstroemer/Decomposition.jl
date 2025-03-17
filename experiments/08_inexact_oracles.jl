@@ -62,12 +62,12 @@ experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 2, tol =
 experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 2, tol = 1e-5)
 
 # Load JuMP model.
-jump_model = jump_model_from_file("national_scale_744.mps")
+jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
 for i in 0:10
     println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(i)")
-    model = experiment(jump_model; T = 744, n = 2, tol = (i == 0) ? 0.0 : 10.0 ^ (-i))
+    model = experiment(jump_model; T = 8760, n = 60, tol = (i == 0) ? 0.0 : 10.0 ^ (-i))
 
     # Write results.
     JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer))
