@@ -62,7 +62,7 @@ end
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
-for drop in [0, -1, 30, 40, 50, 60, 70, 80, 90]
+for drop in [0, -1, 40, 50, 60, 70, 80, 90]
     model = experiment(jump_model; T = 8760, n = 60, drop)
 
     # Write results.
