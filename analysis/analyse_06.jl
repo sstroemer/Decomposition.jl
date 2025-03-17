@@ -19,7 +19,10 @@ y = Dict("h" => Dict{String, Any}("sub" => nothing), "g" => Dict{String, Any}("s
 for r in RUNS
     for solver in ["h", "g"]
         dir = joinpath(RUN_DIR, r)
-        timings = [(π = π0 * τ^(i - 1), t = JSON3.read(fn)) for (i, fn) in enumerate(readdir(dir; join=true)) if startswith(basename(fn), "$(solver)_timer")]
+        timings = [
+            (π = π0 * τ^(i - 1), t = JSON3.read(fn)) for
+            (i, fn) in enumerate(readdir(dir; join = true)) if startswith(basename(fn), "$(solver)_timer")
+        ]
 
         y[solver]["x"] = [el.π for el in timings]
         y[solver]["iter"] = [el.t[:inner_timers][:main][:inner_timers][:optimize][:n_calls] for el in timings]
@@ -92,7 +95,7 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
-x = reverse(string.(log.(1/τ, y["g"]["x"] ./ minimum(y["g"]["x"]))))
+x = reverse(string.(log.(1 / τ, y["g"]["x"] ./ minimum(y["g"]["x"]))))
 
 # Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()
@@ -100,7 +103,9 @@ push!(traces, bar(; x = x, y = reverse(y["g"]["iter"]), name = "Gurobi v12.0.1",
 push!(traces, bar(; x = x, y = reverse(y["h"]["iter"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "iterations (%)")),
-    joinpath(VIZ_DIR, "iterations.png"), width = 500, height = 500,
+    joinpath(VIZ_DIR, "iterations.png");
+    width = 500,
+    height = 500,
 )
 
 # Plot avg. sub time.
@@ -109,5 +114,7 @@ push!(traces, bar(; x = x, y = reverse(y["g"]["sub"]), name = "Gurobi v12.0.1", 
 push!(traces, bar(; x = x, y = reverse(y["h"]["sub"]), name = "HiGHS v1.9.0", marker_color = "#0026ff"))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty (π ⋅ τ^x)", yaxis_title = "avg. sub-model solve time (%)")),
-    joinpath(VIZ_DIR, "sub_time.png"), width = 500, height = 500,
+    joinpath(VIZ_DIR, "sub_time.png");
+    width = 500,
+    height = 500,
 )

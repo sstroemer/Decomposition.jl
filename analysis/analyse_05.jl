@@ -58,8 +58,14 @@ end
 function make_plot(ex)
     x = xmin:xmax
     colors = ["#0026ff", "#ff4800", "#ffa480"]
-    legend_entries =
-        Dict("ex1" => "baseline", "ex2" => "bounded variables", "ex3" => "baseline", "ex4" => "bounded variables", "ex5" => "baseline", "ex6" => "bounded variables")
+    legend_entries = Dict(
+        "ex1" => "baseline",
+        "ex2" => "bounded variables",
+        "ex3" => "baseline",
+        "ex4" => "bounded variables",
+        "ex5" => "baseline",
+        "ex6" => "bounded variables",
+    )
 
     traces = Vector{PlotlyJS.GenericTrace}()
     push!(
@@ -126,6 +132,6 @@ function make_plot(ex)
     )
 end
 
-savefig(make_plot(examples[1:2]), joinpath(VIZ_DIR, "simplex.png"), width = 450, height = 550)
-savefig(make_plot(examples[3:4]), joinpath(VIZ_DIR, "ipm.png"), width = 450, height = 550)
-savefig(make_plot(examples[5:6]), joinpath(VIZ_DIR, "stabilized.png"), width = 450, height = 550)
+savefig(make_plot(examples[1:2]), joinpath(VIZ_DIR, "simplex.png"); width = 450, height = 550)
+savefig(make_plot(examples[3:4]), joinpath(VIZ_DIR, "ipm.png"); width = 450, height = 550)
+savefig(make_plot(examples[5:6]), joinpath(VIZ_DIR, "stabilized.png"); width = 450, height = 550)

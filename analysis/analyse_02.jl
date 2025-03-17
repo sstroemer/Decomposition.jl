@@ -9,7 +9,7 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = replace(RUN_DIR, "experiments" => "analysis")
 
 PARALLELIZATION = 16
-ts = [1, 8, 24, 39, 84]
+ts = [1, 4, 12, 60, 365]
 y = Dict(
     n => Dict{String, Any}(
         "iter" => [],
@@ -112,38 +112,56 @@ x = string.(ts)
 # Plot iterations.
 base = y[1]["iter"] / 100.0
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = [y[n]["iter"]/base for n in ts], name = "main optimizer", marker_color = "blue"))
+push!(traces, bar(; x = x, y = [y[n]["iter"] / base for n in ts], name = "main optimizer", marker_color = "blue"))
 savefig(
     make_plot(traces, (xaxis_title = "number of temporal splits", yaxis_title = "iterations (%)")),
-    joinpath(VIZ_DIR, "iterations.png"), width = 400, height = 500,
+    joinpath(VIZ_DIR, "iterations.png");
+    width = 400,
+    height = 500,
 )
 
 # Plot time (serial).
 base = sum(y[1][i] for i in ["tmain_opt", "tmain_aux", "tsub_opt_ser", "tsub_aux_ser"]) / 100.0
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = [y[n]["tmain_opt"]/base for n in ts], name = "main (solve)", marker_color = "#ff4800"))
-push!(traces, bar(; x = x, y = [y[n]["tmain_aux"]/base for n in ts], name = "main (overhead)", marker_color = "#ffa480"))
-push!(traces, bar(; x = x, y = [y[n]["tsub_opt_ser"]/base for n in ts], name = "sub (solve)", marker_color = "#0026ff"))
-push!(traces, bar(; x = x, y = [y[n]["tsub_aux_ser"]/base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"))
+push!(traces, bar(; x = x, y = [y[n]["tmain_opt"] / base for n in ts], name = "main (solve)", marker_color = "#ff4800"))
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tmain_aux"] / base for n in ts], name = "main (overhead)", marker_color = "#ffa480"),
+)
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tsub_opt_ser"] / base for n in ts], name = "sub (solve)", marker_color = "#0026ff"),
+)
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tsub_aux_ser"] / base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"),
+)
 savefig(
-    make_plot(
-        traces,
-        (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)"),
-    ),
-    joinpath(VIZ_DIR, "time_serial.png"), width = 400, height = 500,
+    make_plot(traces, (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)")),
+    joinpath(VIZ_DIR, "time_serial.png");
+    width = 400,
+    height = 500,
 )
 
 # Plot time (parallel).
 base = sum(y[1][i] for i in ["tmain_opt", "tmain_aux", "tsub_opt_par", "tsub_aux_par"]) / 100.0
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = [y[n]["tmain_opt"]/base for n in ts], name = "main (solve)", marker_color = "#ff4800"))
-push!(traces, bar(; x = x, y = [y[n]["tmain_aux"]/base for n in ts], name = "main (overhead)", marker_color = "#ffa480"))
-push!(traces, bar(; x = x, y = [y[n]["tsub_opt_par"]/base for n in ts], name = "sub (solve)", marker_color = "#0026ff"))
-push!(traces, bar(; x = x, y = [y[n]["tsub_aux_par"]/base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"))
+push!(traces, bar(; x = x, y = [y[n]["tmain_opt"] / base for n in ts], name = "main (solve)", marker_color = "#ff4800"))
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tmain_aux"] / base for n in ts], name = "main (overhead)", marker_color = "#ffa480"),
+)
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tsub_opt_par"] / base for n in ts], name = "sub (solve)", marker_color = "#0026ff"),
+)
+push!(
+    traces,
+    bar(; x = x, y = [y[n]["tsub_aux_par"] / base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"),
+)
 savefig(
-    make_plot(
-        traces,
-        (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)"),
-    ),
-    joinpath(VIZ_DIR, "time_parallel.png"), width = 400, height = 500,
+    make_plot(traces, (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)")),
+    joinpath(VIZ_DIR, "time_parallel.png");
+    width = 400,
+    height = 500,
 )

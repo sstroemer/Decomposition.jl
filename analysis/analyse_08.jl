@@ -12,7 +12,9 @@ hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 exp_tol = collect(0:10)
 tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
 
-y = Dict(i => Dict{String, Any}("iter" => nothing, "time" => nothing, "lb" => nothing, "ub" => nothing) for i in exp_tol)
+y = Dict(
+    i => Dict{String, Any}("iter" => nothing, "time" => nothing, "lb" => nothing, "ub" => nothing) for i in exp_tol
+)
 
 # Extract results.
 for r in RUNS
@@ -54,9 +56,37 @@ end
 function make_plot(traces, layout)
     kwlay = Dict(
         :title => "",
-        :xaxis => PlotlyJS.attr(; showgrid = true, zeroline = false, showline = true, mirror = true, ticks = "outside", ticklen = 5, tickwidth = 1.5, tickcolor = "black", gridcolor = "lightgray"),
-        :yaxis => PlotlyJS.attr(; showgrid = true, zeroline = false, showline = true, mirror = true, ticks = "outside", ticklen = 5, tickwidth = 1.5, tickcolor = "black", gridcolor = "lightgray"),
-        :legend => PlotlyJS.attr(; x = 0.10, y = 0.95, bordercolor = "black", borderwidth = 1, xanchor = "left", yanchor = "top", orientation = "h"),
+        :xaxis => PlotlyJS.attr(;
+            showgrid = true,
+            zeroline = false,
+            showline = true,
+            mirror = true,
+            ticks = "outside",
+            ticklen = 5,
+            tickwidth = 1.5,
+            tickcolor = "black",
+            gridcolor = "lightgray",
+        ),
+        :yaxis => PlotlyJS.attr(;
+            showgrid = true,
+            zeroline = false,
+            showline = true,
+            mirror = true,
+            ticks = "outside",
+            ticklen = 5,
+            tickwidth = 1.5,
+            tickcolor = "black",
+            gridcolor = "lightgray",
+        ),
+        :legend => PlotlyJS.attr(;
+            x = 0.10,
+            y = 0.95,
+            bordercolor = "black",
+            borderwidth = 1,
+            xanchor = "left",
+            yanchor = "top",
+            orientation = "h",
+        ),
         :plot_bgcolor => "white",
         :paper_bgcolor => "white",
         :font => PlotlyJS.attr(; family = "Arial, sans-serif", size = 10, color = "black"),
@@ -76,22 +106,113 @@ ymax = max(iter_max / base_iter, time_max / base_time) * 1.05
 x = [(e == 0) ? "" : "1e-$(e)" for e in exp_tol]
 
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, scatter(; zorder = -1, x = x, y = fill(100.0, length(x)), mode = "lines", showlegend = false, line = PlotlyJS.attr(; color = "black", dash = "dash")))
+push!(
+    traces,
+    scatter(;
+        zorder = -1,
+        x = x,
+        y = fill(100.0, length(x)),
+        mode = "lines",
+        showlegend = false,
+        line = PlotlyJS.attr(; color = "black", dash = "dash"),
+    ),
+)
 for (i, gr) in enumerate(y[0]["gap_reached"])
-    push!(traces, bar(; zorder = -2, x = x, y = vcat(y[0]["iter"][gr] / base_iter, zeros(length(exp_tol) - 1)), marker_color = "#ff4800$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "concurrent"), legendgroup = "concurrent", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
-    push!(traces, bar(; zorder = 1, x = x, y = vcat(0.0, [y[e]["iter"][y[e]["gap_reached"][i]] / base_iter for e in exp_tol[2:end]]), marker_color = "#0026ff$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "barrier"), legendgroup = "barrier", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
+    push!(
+        traces,
+        bar(;
+            zorder = -2,
+            x = x,
+            y = vcat(y[0]["iter"][gr] / base_iter, zeros(length(exp_tol) - 1)),
+            marker_color = "#ff4800$(opacity[i])",
+            legendgrouptitle = PlotlyJS.attr(; text = "concurrent"),
+            legendgroup = "concurrent",
+            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
+        ),
+    )
+    push!(
+        traces,
+        bar(;
+            zorder = 1,
+            x = x,
+            y = vcat(0.0, [y[e]["iter"][y[e]["gap_reached"][i]] / base_iter for e in exp_tol[2:end]]),
+            marker_color = "#0026ff$(opacity[i])",
+            legendgrouptitle = PlotlyJS.attr(; text = "barrier"),
+            legendgroup = "barrier",
+            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
+        ),
+    )
 end
-savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "iterations (%)", yaxis_range = [0, ymax])), joinpath(VIZ_DIR, "iterations.png"); width = 700, height = 550)
+savefig(
+    make_plot(
+        traces,
+        (
+            barmode = "overlay",
+            xaxis_title = "barrier tolerance",
+            yaxis_title = "iterations (%)",
+            yaxis_range = [0, ymax],
+        ),
+    ),
+    joinpath(VIZ_DIR, "iterations.png");
+    width = 700,
+    height = 550,
+)
 
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, scatter(; zorder = -1, x = x, y = fill(100.0, length(x)), mode = "lines", showlegend = false, line = PlotlyJS.attr(; color = "black", dash = "dash")))
+push!(
+    traces,
+    scatter(;
+        zorder = -1,
+        x = x,
+        y = fill(100.0, length(x)),
+        mode = "lines",
+        showlegend = false,
+        line = PlotlyJS.attr(; color = "black", dash = "dash"),
+    ),
+)
 for (i, gr) in enumerate(y[0]["gap_reached"])
-    push!(traces, bar(; zorder = -2, x = x, y = vcat(y[0]["time"][gr] / base_time, zeros(length(exp_tol) - 1)), marker_color = "#ff4800$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "concurrent"), legendgroup = "concurrent", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
-    push!(traces, bar(; zorder = 1, x = x, y = vcat(0.0, [y[e]["time"][y[e]["gap_reached"][i]] / base_time for e in exp_tol[2:end]]), marker_color = "#0026ff$(opacity[i])", legendgrouptitle = PlotlyJS.attr(; text = "barrier"), legendgroup = "barrier", name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])"))
+    push!(
+        traces,
+        bar(;
+            zorder = -2,
+            x = x,
+            y = vcat(y[0]["time"][gr] / base_time, zeros(length(exp_tol) - 1)),
+            marker_color = "#ff4800$(opacity[i])",
+            legendgrouptitle = PlotlyJS.attr(; text = "concurrent"),
+            legendgroup = "concurrent",
+            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
+        ),
+    )
+    push!(
+        traces,
+        bar(;
+            zorder = 1,
+            x = x,
+            y = vcat(0.0, [y[e]["time"][y[e]["gap_reached"][i]] / base_time for e in exp_tol[2:end]]),
+            marker_color = "#0026ff$(opacity[i])",
+            legendgrouptitle = PlotlyJS.attr(; text = "barrier"),
+            legendgroup = "barrier",
+            name = "Δ = $(["10%", "5%", "2.5%", "1%"][i])",
+        ),
+    )
 end
-savefig(make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax])), joinpath(VIZ_DIR, "time.png"); width = 700, height = 550)
+savefig(
+    make_plot(
+        traces,
+        (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax]),
+    ),
+    joinpath(VIZ_DIR, "time.png");
+    width = 700,
+    height = 550,
+)
 
 savefig(
-    make_plot(traces, (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax])),
-    joinpath(VIZ_DIR, "time.png"); scale=2, width = 700, height = 550
+    make_plot(
+        traces,
+        (barmode = "overlay", xaxis_title = "barrier tolerance", yaxis_title = "time (%)", yaxis_range = [0, ymax]),
+    ),
+    joinpath(VIZ_DIR, "time.png");
+    scale = 2,
+    width = 700,
+    height = 550,
 )
