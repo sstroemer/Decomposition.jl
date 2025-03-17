@@ -39,6 +39,13 @@ function experiment(jump_model::JuMP.Model, f; T::Int64, n::Int64, penalty::Floa
 
     finalize!(model)
 
+    # Explicitly set this for the level set.
+    if JuMP.solver_name(Benders.main(model)) == "Gurobi"
+        JuMP.set_attribute(Benders.main(model), "BarConvTol", 1e-3)
+    elseif JuMP.solver_name(Benders.main(model)) == "HiGHS"
+        JuMP.set_attribute(Benders.main(model), "ipm_optimality_tolerance", 1e-3)
+    end
+
     while !iterate!(model; nthreads = -1)
     end
 
