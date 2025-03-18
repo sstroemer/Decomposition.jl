@@ -48,7 +48,7 @@ function cb_post_annotate(model; τ::Float64, merge_first::Bool)
     return nothing
 end
 
-function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, merge_first::Bool, feasibility::Bool = true)
+function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, merge_first::Bool, feasibility::Bool = true, ipm::Bool)
     model = Benders.DecomposedModel(;
         jump_model,
         annotator = Calliope(),
@@ -63,7 +63,6 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
             Benders.Config.NumberOfTemporalBlocks(n),
             Benders.Config.ModelVerbosity(3),
             Benders.Config.ModelDirectMode(; enable = false),
-            Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
@@ -71,11 +70,15 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
         ],
     )
 
+    ipm && set_attribute(model, Solver.AlgorithmIPM(; model = :main))
+
     feasibility && set_attribute(model, Solver.ExtractDualRay(; model = :sub))
     feasibility && set_attribute(model, Benders.FeasibilityCutTypeMulti())
     feasibility || set_attribute(model, Benders.Sub.RelaxationLinked(; penalty = 1e6))
 
     finalize!(model; cb_post_annotate = (model) -> cb_post_annotate(model; τ, merge_first))
+
+    ipm || JuMP.set_attribute(Benders.main(model), "Method", 3)
 
     while !iterate!(model; nthreads = -1)
     end
@@ -84,17 +87,20 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
 end
 
 attr = Dict(
-    :ex1 => Dict(:τ => 0.00, :merge_first => false),
-    :ex2 => Dict(:τ => 0.01, :merge_first => false),
-    :ex3 => Dict(:τ => 0.10, :merge_first => false),
-    :ex4 => Dict(:τ => 0.00, :merge_first => true),
-    :ex5 => Dict(:τ => 0.01, :merge_first => true),
-    :ex6 => Dict(:τ => 0.10, :merge_first => true),
+    :ex1 => Dict(:τ => 0.00, :merge_first => false, :ipm => true),
+    :ex2 => Dict(:τ => 0.01, :merge_first => false, :ipm => true),
+    :ex3 => Dict(:τ => 0.01, :merge_first => false, :ipm => false),
+    :ex4 => Dict(:τ => 0.01, :merge_first => true, :ipm => false),
+    
+    # :ex3 => Dict(:τ => 0.10, :merge_first => false),
+    # :ex4 => Dict(:τ => 0.00, :merge_first => true),
+    # :ex5 => Dict(:τ => 0.01, :merge_first => true),
+    # :ex6 => Dict(:τ => 0.10, :merge_first => true),
 )
 
 # Make sure everything's compiled using a small model first.
 jump_model = jump_model_from_file("national_scale_120.mps")
-experiment(jump_model; T = 120, n = 3, τ = 0.0, merge_first = false, feasibility = false)
+experiment(jump_model; T = 120, n = 3, τ = 0.0, merge_first = false, feasibility = false, ipm = true)
 for (k, v) in attr
     experiment(jump_model; T = 120, n = 3, v...)
 end
@@ -112,5 +118,5 @@ for (k, v) in attr
 end
 
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> baseline")
-model = experiment(jump_model; T = 8760, n = 24, τ = 0.0, merge_first = false, feasibility = false)
+model = experiment(jump_model; T = 8760, n = 24, τ = 0.0, merge_first = false, feasibility = false, ipm = true)
 JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer); allow_inf = true)
