@@ -58,12 +58,12 @@ attr = Dict(
     :ex4 => [Benders.Main.VirtualSoftBounds(0.0, 1e6), Solver.AlgorithmIPM(; model = :main)],
     :ex5 => [
         Solver.AlgorithmIPM(; model = :main),
-        Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
+        Benders.Main.RegularizationLevelSet(; alpha = 0.25, infeasible_alpha_step = 0.25),
     ],
     :ex6 => [
         Benders.Main.VirtualSoftBounds(0.0, 1e6),
         Solver.AlgorithmIPM(; model = :main),
-        Benders.Main.RegularizationLevelSet(; alpha = 0.1, infeasible_alpha_step = 0.2),
+        Benders.Main.RegularizationLevelSet(; alpha = 0.25, infeasible_alpha_step = 0.25),
     ],
 )
 
