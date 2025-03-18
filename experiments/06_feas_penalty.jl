@@ -73,7 +73,7 @@ max_slack = max(
 # Setting this too low may otherwise wrongfully trigger for a 0.01 convergence tolerance.
 if max_slack >= 1.0
     println("Ecountered non-zero slack: $(max_slack)")
-    break
+    exit()
 end
 
 model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 24, penalty = 10.0^i)
