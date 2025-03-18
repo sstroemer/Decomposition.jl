@@ -54,17 +54,16 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64, ipm
     return model
 end
 
+# Examples: n=24, drop=[0, -1, 40, 50, 60, 70, 80, 90], ipm=true
+n, drop, ipm = length(ARGS) == 3 ? parse.((Int64, Int64, Bool), ARGS) : (60, 50, true)
+
 # Make sure everything's compiled using a small model first.
-experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 0, ipm = true)
-experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 0, ipm = false)
-experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 50, ipm = true)
+experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n, drop, ipm)
 
 # Load JuMP model.
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Run now.
-# Examples: n=24, drop=[0, -1, 40, 50, 60, 70, 80, 90], ipm=true
-n, drop, ipm = length(ARGS) == 3 ? parse.((Int64, Int64, Bool), ARGS) : (60, 50, true)
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(n) / $(drop) / $(ipm)")
 model = experiment(jump_model; T = 8760, n, drop, ipm)
-JSON3.write(joinpath(RESULT_DIR, "timer_$(n)_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf = true)
+JSON3.write(joinpath(RESULT_DIR, "timer_$(n)_$(drop)_$(ipm).json"), TimerOutputs.todict(model.timer); allow_inf = true)
