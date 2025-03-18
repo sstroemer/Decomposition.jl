@@ -72,9 +72,9 @@ experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 2, tol =
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Run now.
-i = length(ARGS) == 1 ? parse(Int64, ARGS[1]) : 5
+i = length(ARGS) == 1 ? parse(Int64, ARGS[1]) : 3
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(i)")
-model = experiment(jump_model; T = 8760, n = 12, tol = (i == 0) ? 0.0 : 10.0^(-i))
+model = experiment(jump_model; T = 8760, n = 1, tol = (i == 0) ? 0.0 : 10.0^(-i))
 
 # Write results.
 JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf = true)
