@@ -87,6 +87,7 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, τ::Float64, mer
 end
 
 attr = Dict(
+    :ex0 => Dict(:τ => 0.00, :merge_first => false, :ipm => true, :feasibility => false),
     :ex1 => Dict(:τ => 0.00, :merge_first => false, :ipm => true),
     :ex2 => Dict(:τ => 0.01, :merge_first => false, :ipm => true),
     :ex3 => Dict(:τ => 0.01, :merge_first => false, :ipm => false),
@@ -98,25 +99,18 @@ attr = Dict(
     # :ex6 => Dict(:τ => 0.10, :merge_first => true),
 )
 
+exp_idx = length(ARGS) == 1 ? ARGS[1] : "1"
+sel = Symbol("ex$(exp_idx)")
+
 # Make sure everything's compiled using a small model first.
-jump_model = jump_model_from_file("national_scale_120.mps")
-experiment(jump_model; T = 120, n = 3, τ = 0.0, merge_first = false, feasibility = false, ipm = true)
-for (k, v) in attr
-    experiment(jump_model; T = 120, n = 3, v...)
-end
+experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, attr[sel]...)
 
 # Load JuMP model.
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
 # Now run the experiment.
-for (k, v) in attr
-    println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(k)")
-    model = experiment(jump_model; T = 8760, n = 24, v...)
+println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(exp_idx)")
+model = experiment(jump_model; T = 8760, n = 24, attr[sel]...)
 
-    # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(k).json"), TimerOutputs.todict(model.timer); allow_inf = true)
-end
-
-println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> baseline")
-model = experiment(jump_model; T = 8760, n = 24, τ = 0.0, merge_first = false, feasibility = false, ipm = true)
-JSON3.write(joinpath(RESULT_DIR, "timer_baseline.json"), TimerOutputs.todict(model.timer); allow_inf = true)
+# Write results.
+JSON3.write(joinpath(RESULT_DIR, "timer_$(exp_idx).json"), TimerOutputs.todict(model.timer); allow_inf = true)
