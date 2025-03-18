@@ -10,7 +10,7 @@ EXPERIMENT = split(basename(@__FILE__), ".")[1]
 EXPERIMENT_UUID = string(UUIDs.uuid4())
 RESULT_DIR = mkpath(joinpath(@__DIR__, "out", EXPERIMENT, EXPERIMENT_UUID))
 
-function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
+function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64, ipm::Bool)
     model = Benders.DecomposedModel(;
         jump_model,
         annotator = Calliope(),
@@ -29,6 +29,8 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
         set_attribute(model, Benders.CutPostprocessingDropNonBinding(; iterations = -drop, threshold = 1e-6))
     end
 
+    ipm && set_attribute(model, Solver.AlgorithmIPM(; model = :main))
+
     set_attribute.(
         model,
         [
@@ -36,12 +38,11 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
             Benders.Config.NumberOfTemporalBlocks(n),
             Benders.Config.ModelVerbosity(3),
             Benders.Config.ModelDirectMode(; enable = false),
-            Solver.AlgorithmIPM(; model = :main),
             Benders.OptimalityCutTypeMulti(),
             Benders.Sub.RelaxationLinked(; penalty = 1e6),
             Benders.Main.VirtualSoftBounds(0.0, 1e6),
             Benders.Main.ObjectiveDefault(),
-            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 250),
+            Benders.Termination.Stop(; opt_gap_rel = 1e-2, iterations = 1000),
         ],
     )
 
@@ -54,17 +55,16 @@ function experiment(jump_model::JuMP.Model; T::Int64, n::Int64, drop::Int64)
 end
 
 # Make sure everything's compiled using a small model first.
-for drop in [-75, -1, 0, 75]
-    experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop)
-end
+experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 0, ipm = true)
+experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 0, ipm = false)
+experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 3, drop = 50, ipm = true)
 
 # Load JuMP model.
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
-# Now run the experiment.
-for drop in [0, -1, 40, 50, 60, 70, 80, 90]
-    model = experiment(jump_model; T = 8760, n = 24, drop)
-
-    # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf = true)
-end
+# Run now.
+# Examples: n=24, drop=[0, -1, 40, 50, 60, 70, 80, 90], ipm=true
+n, drop, ipm = length(ARGS) == 3 ? parse.((Int64, Int64, Bool), ARGS) : (60, 50, true)
+println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(n) / $(drop) / $(ipm)")
+model = experiment(jump_model; T = 8760, n, drop, ipm)
+JSON3.write(joinpath(RESULT_DIR, "timer_$(n)_$(drop).json"), TimerOutputs.todict(model.timer); allow_inf = true)
