@@ -71,23 +71,22 @@ experiment(jump_model_from_file("national_scale_120.mps"); T = 120, n = 2, tol =
 # Load JuMP model.
 jump_model = jump_model_from_file("national_scale_8760.mps")
 
-# Now run the experiment.
-for i in 0:10
-    println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(i)")
-    model = experiment(jump_model; T = 8760, n = 12, tol = (i == 0) ? 0.0 : 10.0^(-i))
+# Run now.
+i = length(ARGS) == 1 ? parse(Int64, ARGS[1]) : 5
+println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(i)")
+model = experiment(jump_model; T = 8760, n = 12, tol = (i == 0) ? 0.0 : 10.0^(-i))
 
-    # Write results.
-    JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf = true)
-    JSON3.write(
-        joinpath(RESULT_DIR, "history_$(i).json"),
-        [
-            Dict(
-                "k" => (entry[:iteration] + 1),
-                "t" => entry[:time],
-                "lb" => entry[:lower_bound],
-                "ub" => entry[:upper_bound],
-            ) for entry in model.info[:history]
-        ];
-        allow_inf = true,
-    )
-end
+# Write results.
+JSON3.write(joinpath(RESULT_DIR, "timer_$(i).json"), TimerOutputs.todict(model.timer); allow_inf = true)
+JSON3.write(
+    joinpath(RESULT_DIR, "history_$(i).json"),
+    [
+        Dict(
+            "k" => (entry[:iteration] + 1),
+            "t" => entry[:time],
+            "lb" => entry[:lower_bound],
+            "ub" => entry[:upper_bound],
+        ) for entry in model.info[:history]
+    ];
+    allow_inf = true,
+)
