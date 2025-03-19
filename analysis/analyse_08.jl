@@ -15,16 +15,27 @@ y = Dict()
 # Extract results.
 files = []
 for r in RUNS
-    fh, ft = readdir(joinpath(RUN_DIR, r); join=true)
-    i = parse(Int64, rsplit(rsplit(fh, "."; limit=2)[1], "_"; limit=2)[2])
+    fh, ft = readdir(joinpath(RUN_DIR, r); join = true)
+    i = parse(Int64, rsplit(rsplit(fh, "."; limit = 2)[1], "_"; limit = 2)[2])
     push!(files, (i, fh, ft))
 end
 
 for f in files
     i = f[1]
-    haskey(y, i) || (y[i] = Dict{String, Any}("cnt" => 0, "iter_1" => 0, "time_1" => 0, "iter_5" => 0, "time_5" => 0, "share_main" => 0.0, "share_sub_s" => 0.0, "share_sub_p" => 0.0))
-    history = JSON3.read(f[2]; allow_inf=true)
-    timings = JSON3.read(f[3]; allow_inf=true)
+    haskey(y, i) || (
+        y[i] = Dict{String, Any}(
+            "cnt" => 0,
+            "iter_1" => 0,
+            "time_1" => 0,
+            "iter_5" => 0,
+            "time_5" => 0,
+            "share_main" => 0.0,
+            "share_sub_s" => 0.0,
+            "share_sub_p" => 0.0,
+        )
+    )
+    history = JSON3.read(f[2]; allow_inf = true)
+    timings = JSON3.read(f[3]; allow_inf = true)
     t0 = history[1]["t"]["timestamp"]
 
     for entry in history
@@ -37,7 +48,7 @@ for f in files
     end
 
     t_main = timings[:inner_timers][:main][:time_ns]
-    t_subs = sort([v[:time_ns] for (k, v) in timings[:inner_timers][:sub][:inner_timers]]; rev=true)
+    t_subs = sort([v[:time_ns] for (k, v) in timings[:inner_timers][:sub][:inner_timers]]; rev = true)
     t_sub_s = sum(t_subs)
     t_sub_p = sum(t_subs[1:PARALLELIZATION:end])
     y[i]["share_main"] += t_main / (t_main + t_sub_s)
