@@ -84,7 +84,8 @@ function execute!(model::Benders.DecomposedModel, query::Benders.Query.SolveMain
             # Switch to level-set mode.
             JuMP.@objective(jm, Min, 0)  # TODO: is there a better way to switch to feasibility mode?
 
-            alpha = reg_attr.alpha
+            # TODO: make the max iterations (here 50) a parameter
+            alpha = max(0.01, reg_attr.alpha * (1.0 - current_iteration(model) / 50.0))
             for _ in 1:reg_attr.safety_max_infeasible_resolve
                 JuMP.fix(jm[:reg_levelset_L], alpha * ub + (1 - alpha) * lb; force = true)
 
