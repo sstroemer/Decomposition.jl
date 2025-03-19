@@ -107,14 +107,16 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
-x = string.(ts)
+# x = string.(ts)
+@assert all(ts .== [1, 4, 12, 24, 60, 365])
+x = ["1Y", "1Q", "1M", "15D", "6D", "1D"]
 
 # Plot iterations.
 base = y[1]["iter"] / 100.0
 traces = Vector{PlotlyJS.GenericTrace}()
 push!(traces, bar(; x = x, y = [y[n]["iter"] / base for n in ts], name = "main optimizer", marker_color = "blue"))
 savefig(
-    make_plot(traces, (xaxis_title = "number of temporal splits", yaxis_title = "iterations (%)")),
+    make_plot(traces, (xaxis_title = "time-period of a single sub-model", yaxis_title = "iterations (%)")),
     joinpath(VIZ_DIR, "iterations.png");
     width = 400,
     height = 500,
@@ -137,7 +139,7 @@ push!(
     bar(; x = x, y = [y[n]["tsub_aux_ser"] / base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"),
 )
 savefig(
-    make_plot(traces, (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)")),
+    make_plot(traces, (barmode = "stack", xaxis_title = "time-period of a single sub-model", yaxis_title = "time (%)")),
     joinpath(VIZ_DIR, "time_serial.png");
     width = 400,
     height = 500,
@@ -160,7 +162,7 @@ push!(
     bar(; x = x, y = [y[n]["tsub_aux_par"] / base for n in ts], name = "sub (overhead)", marker_color = "#8093ff"),
 )
 savefig(
-    make_plot(traces, (barmode = "stack", xaxis_title = "number of temporal splits", yaxis_title = "time (%)")),
+    make_plot(traces, (barmode = "stack", xaxis_title = "time-period of a single sub-model", yaxis_title = "time (%)")),
     joinpath(VIZ_DIR, "time_parallel.png");
     width = 400,
     height = 500,

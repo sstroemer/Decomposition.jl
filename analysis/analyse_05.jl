@@ -17,6 +17,7 @@ for r in RUNS
     dir = joinpath(RUN_DIR, r)
 
     for e in examples
+        @show r, e
         history = JSON3.read(joinpath(dir, "history_$(e).json"); allow_inf = true)
 
         lb, ub = [-Inf], [+Inf]
