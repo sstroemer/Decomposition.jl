@@ -9,42 +9,49 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6", "baseline"]
-y = Dict(e => Dict{String, Any}("iter" => 0, "main" => 0.0, "sub_p" => 0.0, "sub_s" => 0.0) for e in examples)
+y = Dict()
+y_keys = ["iter", "main", "sub_p", "sub_s", "cnt"]
 
 PARALLELIZATION = 16
 
-# Extract results.
+files = []
 for r in RUNS
-    dir = joinpath(RUN_DIR, r)
+    ft = only(readdir(joinpath(RUN_DIR, r); join = true))
+    i = parse(Int64, rsplit(rsplit(ft, "."; limit = 2)[1], "_"; limit = 2)[2])
+    push!(files, (ft, i))
+end
 
-    for e in examples
-        timings = JSON3.read(joinpath(dir, "timer_$(e).json"))
-        mit = timings[:inner_timers][:main]
-        if mit[:inner_timers][:optimize][:n_calls] >= 250
-            @error "not converged" r dir e
-            continue
-        end
+for f in files
+    e = f[2]
+    haskey(y, e) || (y[e] = Dict{String, Any}(k => 0 for k in y_keys))
+    timings = JSON3.read(f[1]; allow_inf = true)
 
-        y[e]["iter"] += mit[:inner_timers][:optimize][:n_calls]
-        y[e]["main"] += mit[:time_ns]
-
-        sit = timings[:inner_timers][:sub][:inner_timers]
-        par = zeros(PARALLELIZATION)
-        pi = 1
-        for t in sort([v[:time_ns] for v in values(sit)]; rev = true)
-            par[pi] += t
-            pi = pi % PARALLELIZATION + 1
-        end
-        y[e]["sub_p"] += par[1]
-        y[e]["sub_s"] += sum(v[:time_ns] for (k, v) in sit)
+    mit = timings[:inner_timers][:main]
+    if mit[:inner_timers][:optimize][:n_calls] >= 250
+        @error "not converged" e f[2]
+        continue
     end
+
+    y[e]["iter"] += mit[:inner_timers][:optimize][:n_calls]
+    y[e]["main"] += mit[:time_ns]
+
+    sit = timings[:inner_timers][:sub][:inner_timers]
+    par = zeros(PARALLELIZATION)
+    pi = 1
+    for t in sort([v[:time_ns] for v in values(sit)]; rev = true)
+        par[pi] += t
+        pi = pi % PARALLELIZATION + 1
+    end
+    y[e]["sub_p"] += par[1]
+    y[e]["sub_s"] += sum(v[:time_ns] for (k, v) in sit)
+    
+    y[e]["cnt"] += 1
 end
 
 # Average results (over all runs [already included in baseline], then down to "per iteration"), normalize to baseline.
-baseline_iter = y["baseline"]["iter"] / 100.0
-baseline = (y["baseline"]["main"] + y["baseline"]["sub_p"]) / 100.0
-for e in examples
+baseline_iter = y[0]["iter"] / 100.0
+baseline = (y[0]["main"] + y[0]["sub_p"]) / 100.0
+for e in keys(y)
     y[e]["main"] /= baseline
     y[e]["sub_p"] /= baseline
     y[e]["sub_s"] /= baseline
@@ -98,14 +105,14 @@ function make_plot(traces, layout)
 end
 
 names = Dict(
-    "baseline" => "optimality cuts only",
-    "ex1" => "opt. & feas. cuts",
-    "ex2" => "o./f. cuts & small-sub VIs",
-    "ex4" => "o./f. cuts & 1st-sub VIs",
-    "ex5" => "o./f. cuts & small-and-1st-sub VIs",
+    0 => "optimality cuts only",
+    1 => "opt. & feas. cuts",
+    2 => "o./f. cuts & small-sub VIs",
+    3 => "o./f. cuts & 1st-sub VIs",
+    4 => "simplex (o./f. cuts & 1st-sub VIs)",
 )
 
-exs = sort(collect(e for e in examples if haskey(names, e)); rev = true)
+exs = sort(collect(keys(y)); rev = true)
 yn = [names[e] for e in exs]
 
 traces = Vector{PlotlyJS.GenericTrace}()

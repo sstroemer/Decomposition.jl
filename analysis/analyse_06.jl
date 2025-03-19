@@ -9,59 +9,61 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-# iterations, sub time distribution
-τ = 0.5
-π0 = 1e8
-
 PARALLELIZATION = 16
-y = Dict(s => Dict{String, Any}(k => nothing for k in ["x", "iter", "main", "sub_p", "sub_s"]) for s in ["h", "g"])
+y = Dict()
+y_keys = ["iter", "main", "sub_p", "sub_s", "cnt"]
 
-# Extract results.
+files = []
 for r in RUNS
-    for solver in ["h", "g"]
-        dir = joinpath(RUN_DIR, r)
-        timings = [
-            (π = π0 * τ^(i - 1), t = JSON3.read(fn)) for (i, fn) in
-            enumerate([fn for fn in readdir(dir; join = true) if startswith(basename(fn), "$(solver)_timer")])
-        ]
-
-        y[solver]["x"] = hcomb(y[solver]["x"], [el.π for el in timings])
-        y[solver]["iter"] = hcomb(y[solver]["iter"], [el.t[:inner_timers][:sub][:n_calls] for el in timings])
-        y[solver]["main"] = hcomb(y[solver]["main"], [el.t[:inner_timers][:main][:time_ns] for el in timings])
-        y[solver]["sub_s"] = hcomb(y[solver]["sub_s"], [el.t[:inner_timers][:sub][:time_ns] for el in timings])
-
-        tmp = []
-        for el in timings
-            sit = el.t[:inner_timers][:sub][:inner_timers]
-            par = zeros(PARALLELIZATION)
-            pi = 1
-            for t in sort([v[:time_ns] for v in values(sit)]; rev = true)
-                par[pi] += t
-                pi = pi % PARALLELIZATION + 1
-            end
-            push!(tmp, par[1])
-        end
-        y[solver]["sub_p"] = hcomb(y[solver]["sub_p"], tmp)
+    for ft in readdir(joinpath(RUN_DIR, r); join = true)
+        tmp = rsplit(rsplit(ft, "."; limit = 2)[1], "_"; limit = 4)
+        s, i = string(tmp[end-2][end]), parse(Int64, tmp[end])
+        push!(files, (ft, s, i))
+        y[s] = Dict()
     end
+end
+
+for f in files
+    s, i = f[2:3]
+    haskey(y[s], i) || (y[s][i] = Dict{String, Any}(k => 0 for k in y_keys))
+    timings = JSON3.read(f[1]; allow_inf = true)
+
+    y[s][i]["iter"] += timings[:inner_timers][:sub][:n_calls]
+    y[s][i]["main"] += timings[:inner_timers][:main][:time_ns]
+    y[s][i]["sub_s"] += timings[:inner_timers][:sub][:time_ns]
+
+    sit = timings[:inner_timers][:sub][:inner_timers]
+    par = zeros(PARALLELIZATION)
+    pi = 1
+    for t in sort([v[:time_ns] for v in values(sit)]; rev = true)
+        par[pi] += t
+        pi = pi % PARALLELIZATION + 1
+    end
+    y[s][i]["sub_p"] += par[1]
+
+    y[s][i]["cnt"] += 1
 end
 
 # Average results.
 for solver in ["h", "g"]
-    if length(RUNS) > 1
-        for k in keys(y[solver])
-            y[solver][k] = vec(mean(y[solver][k]; dims = 2))
+    for i in keys(y[solver])
+        for k in keys(y[solver][i])
+            (k == "cnt") && continue
+            y[solver][i][k] /= y[solver][i]["cnt"]
         end
     end
 end
 
 # Normalize.
-base_iter = y["g"]["iter"][end] ./ 100.0
-base_time = (y["g"]["main"][end] + y["g"]["sub_p"][end]) ./ 100.0
+base_iter = y["g"][5]["iter"][end] ./ 100.0
+base_time = (y["g"][5]["main"][end] + y["g"][5]["sub_p"][end]) ./ 100.0
 for solver in ["h", "g"]
-    y[solver]["iter"] = y[solver]["iter"] ./ base_iter
-    y[solver]["main"] = y[solver]["main"] ./ base_time
-    y[solver]["sub_p"] = y[solver]["sub_p"] ./ base_time
-    y[solver]["sub_s"] = y[solver]["sub_s"] ./ base_time
+    for i in keys(y[solver])
+        y[solver][i]["iter"] = y[solver][i]["iter"] ./ base_iter
+        y[solver][i]["main"] = y[solver][i]["main"] ./ base_time
+        y[solver][i]["sub_p"] = y[solver][i]["sub_p"] ./ base_time
+        y[solver][i]["sub_s"] = y[solver][i]["sub_s"] ./ base_time
+    end
 end
 
 # Plot.
@@ -109,12 +111,13 @@ function make_plot(traces, layout)
     return plot(traces, Layout(; kwlay..., layout...))
 end
 
-x = reverse(string.(y["g"]["x"]))
+x = sort(collect(keys(y["g"])))
+xs = ["1e$(i)" for i in x]
 
 # Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = x, y = reverse(y["g"]["iter"]), name = "Gurobi v12.0.1", marker_color = "#9c0000"))
-push!(traces, bar(; x = x, y = reverse(y["h"]["iter"]), name = "HiGHS v1.9.0", marker_color = "#39009c"))
+push!(traces, bar(; x = xs, y = [y["g"][i]["iter"] for i in x], name = "Gurobi v12.0.1", marker_color = "#9c0000"))
+push!(traces, bar(; x = xs, y = [y["h"][i]["iter"] for i in x], name = "HiGHS v1.9.0", marker_color = "#39009c"))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty", yaxis_title = "iterations (%)")),
     joinpath(VIZ_DIR, "iterations.png");
@@ -127,8 +130,8 @@ traces = Vector{PlotlyJS.GenericTrace}()
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["g"]["main"] .+ y["g"]["sub_s"]),
+        x = xs,
+        y = [y["g"][i]["main"] + y["g"][i]["sub_s"] for i in x],
         offsetgroup = 2,
         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
         legendgroup = "gurobi",
@@ -139,8 +142,8 @@ push!(
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["g"]["main"] .+ y["g"]["sub_p"]),
+        x = xs,
+        y = [y["g"][i]["main"] + y["g"][i]["sub_p"] for i in x],
         offsetgroup = 2,
         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
         legendgroup = "gurobi",
@@ -151,8 +154,8 @@ push!(
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["g"]["main"]),
+        x = xs,
+        y = [y["g"][i]["main"] for i in x],
         offsetgroup = 2,
         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
         legendgroup = "gurobi",
@@ -164,8 +167,8 @@ push!(
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["h"]["main"] .+ y["h"]["sub_s"]),
+        x = xs,
+        y = [y["h"][i]["main"] + y["h"][i]["sub_s"] for i in x],
         offsetgroup = 1,
         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
         legendgroup = "highs",
@@ -176,8 +179,8 @@ push!(
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["h"]["main"] .+ y["h"]["sub_p"]),
+        x = xs,
+        y = [y["h"][i]["main"] + y["h"][i]["sub_p"] for i in x],
         offsetgroup = 1,
         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
         legendgroup = "highs",
@@ -188,8 +191,8 @@ push!(
 push!(
     traces,
     bar(;
-        x = x,
-        y = reverse(y["h"]["main"]),
+        x = xs,
+        y = [y["h"][i]["main"] for i in x],
         offsetgroup = 1,
         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
         legendgroup = "highs",
