@@ -56,6 +56,7 @@ end
 # Prepare per iteration timings.
 tmax = maximum([e["t"][end] for e in values(y)])
 tbase = y[1]["t"][end] / tmax
+iterbase = findfirst(el -> el <= 1e-2, (y[1]["ub"] .- y[1]["lb"]) ./ y[1]["ub"])
 yt = Dict()
 for e in keys(y)
     xt = 1:1000
@@ -176,14 +177,19 @@ function make_plot(cx, cy, ex, xaxt)
 end
 
 savefig(
-    make_plot((1:250) ./ 2.5, y, 1:2, "iterations"),
+    make_plot((1:250) ./ iterbase .* 100, y, 1:2, "iterations"),
     joinpath(VIZ_DIR, "iter_0_simplex.png");
     width = 450,
     height = 550,
 )
-savefig(make_plot((1:250) ./ 2.5, y, 3:4, "iterations"), joinpath(VIZ_DIR, "iter_1_ipm.png"); width = 450, height = 550)
 savefig(
-    make_plot((1:250) ./ 2.5, y, 5:6, "iterations"),
+    make_plot((1:250) ./ iterbase .* 100, y, 3:4, "iterations"),
+    joinpath(VIZ_DIR, "iter_1_ipm.png");
+    width = 450,
+    height = 550,
+)
+savefig(
+    make_plot((1:250) ./ iterbase .* 100, y, 5:6, "iterations"),
     joinpath(VIZ_DIR, "iter_2_stabilized.png");
     width = 450,
     height = 550,
