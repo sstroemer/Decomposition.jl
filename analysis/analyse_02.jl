@@ -9,56 +9,50 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 
 PARALLELIZATION = 16
-ts = [1, 4, 12, 24, 60, 365]
-y = Dict(
-    n => Dict{String, Any}(
-        "iter" => [],
-        "tmain_opt" => [],
-        "tmain_aux" => [],
-        "tsub_opt_ser" => [],
-        "tsub_aux_ser" => [],
-        "tsub_opt_par" => [],
-        "tsub_aux_par" => [],
-    ) for n in ts
-)
+y = Dict()
+y_keys = ["iter", "tmain_opt", "tmain_aux", "tsub_opt_ser", "tsub_aux_ser", "tsub_opt_par", "tsub_aux_par"]
 
-# Extract results.
+files = []
 for r in RUNS
-    dir = joinpath(RUN_DIR, r)
+    fh, ft = readdir(joinpath(RUN_DIR, r); join = true)
+    i = parse(Int64, rsplit(rsplit(fh, "."; limit = 2)[1], "_"; limit = 2)[2])
+    push!(files, (i, fh, ft))
+end
 
-    for n in ts
-        iter = JSON3.read(joinpath(dir, "history_$(n).json"))[end]["k"] + 1
-        timings = JSON3.read(joinpath(dir, "timer_$(n).json"))
+for f in files
+    n = f[1]
+    haskey(y, n) || (y[n] = Dict{String, Any}(k => [] for k in y_keys))
+    iter = JSON3.read(f[2]; allow_inf = true)[end]["k"] + 1
+    timings = JSON3.read(f[3]; allow_inf = true)
 
-        tim = timings[:inner_timers][:main][:inner_timers]
-        tis = timings[:inner_timers][:sub][:inner_timers]
+    tim = timings[:inner_timers][:main][:inner_timers]
+    tis = timings[:inner_timers][:sub][:inner_timers]
 
-        tmain = tim[:optimize][:time_ns]
-        tmain_aux = sum(v[:time_ns] for (k, v) in tim if k != :optimize)
-        tsub = Dict(k => v[:inner_timers][:optimize][:time_ns] for (k, v) in tis)
-        tsub_aux = Dict(sk => sum(v[:time_ns] for (k, v) in sv[:inner_timers] if k != :optimize) for (sk, sv) in tis)
+    tmain = tim[:optimize][:time_ns]
+    tmain_aux = sum(v[:time_ns] for (k, v) in tim if k != :optimize)
+    tsub = Dict(k => v[:inner_timers][:optimize][:time_ns] for (k, v) in tis)
+    tsub_aux = Dict(sk => sum(v[:time_ns] for (k, v) in sv[:inner_timers] if k != :optimize) for (sk, sv) in tis)
 
-        push!(y[n]["iter"], Float64(iter))
-        push!(y[n]["tmain_opt"], tmain)
-        push!(y[n]["tmain_aux"], tmain_aux)
+    push!(y[n]["iter"], Float64(iter))
+    push!(y[n]["tmain_opt"], tmain)
+    push!(y[n]["tmain_aux"], tmain_aux)
 
-        push!(y[n]["tsub_opt_ser"], sum(values(tsub)))
-        push!(y[n]["tsub_aux_ser"], sum(values(tsub_aux)))
+    push!(y[n]["tsub_opt_ser"], sum(values(tsub)))
+    push!(y[n]["tsub_aux_ser"], sum(values(tsub_aux)))
 
-        par = [Dict("opt" => 0, "aux" => 0) for _ in 1:PARALLELIZATION]
-        pi = 1
-        for (_, i) in sort([(tsub[k] + tsub_aux[k], k) for k in keys(tsub)]; rev = true)
-            par[pi]["opt"] += tsub[i]
-            par[pi]["aux"] += tsub_aux[i]
-            pi = pi % PARALLELIZATION + 1
-        end
-        push!(y[n]["tsub_opt_par"], par[1]["opt"])
-        push!(y[n]["tsub_aux_par"], par[1]["aux"])
+    par = [Dict("opt" => 0, "aux" => 0) for _ in 1:PARALLELIZATION]
+    pi = 1
+    for (_, i) in sort([(tsub[k] + tsub_aux[k], k) for k in keys(tsub)]; rev = true)
+        par[pi]["opt"] += tsub[i]
+        par[pi]["aux"] += tsub_aux[i]
+        pi = pi % PARALLELIZATION + 1
     end
+    push!(y[n]["tsub_opt_par"], par[1]["opt"])
+    push!(y[n]["tsub_aux_par"], par[1]["aux"])
 end
 
 # Average results and convert to seconds.
-for n in ts
+for n in keys(y)
     for k in keys(y[n])
         y[n][k] = mean(y[n][k]) / 1e9
     end
@@ -108,6 +102,7 @@ function make_plot(traces, layout)
 end
 
 # x = string.(ts)
+ts = sort(collect(keys(y)))
 @assert all(ts .== [1, 4, 12, 24, 60, 365])
 x = ["1Y", "1Q", "1M", "15D", "6D", "1D"]
 
