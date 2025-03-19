@@ -9,77 +9,96 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
-examples = ["ex1", "ex2", "ex3", "ex4", "ex5", "ex6"]
-y = Dict(e => Dict{String, Any}("lb" => nothing, "ub" => nothing) for e in examples)
+y = Dict()
+y_keys = ["lb", "ub", "t"]
+xmax = 250
 
-# Extract results.
+files = []
 for r in RUNS
-    dir = joinpath(RUN_DIR, r)
+    fh, ft = readdir(joinpath(RUN_DIR, r); join = true)
+    i = parse(Int64, rsplit(rsplit(fh, "."; limit = 2)[1], "_"; limit = 2)[2])
+    push!(files, (i, fh, ft))
+end
 
-    for e in examples
-        @show r, e
-        history = JSON3.read(joinpath(dir, "history_$(e).json"); allow_inf = true)
+for f in files
+    n = f[1]
+    haskey(y, n) || (y[n] = Dict{String, Any}(k => nothing for k in y_keys))
+    history = JSON3.read(f[2]; allow_inf = true)
+    timings = JSON3.read(f[3]; allow_inf = true)
 
-        lb, ub = [-Inf], [+Inf]
-        for i in eachindex(history)
-            push!(lb, max(lb[end], history[i]["lb"]))
-            push!(ub, min(ub[end], abs(history[i]["ub"])))
-        end
-        for i in 1:(250-length(history))
-            push!(lb, lb[end])
-            push!(ub, ub[end])
-        end
+    t0 = history[1]["t"]["timestamp"]
 
-        @show r, e, length(lb), length(ub)
-
-        y[e]["lb"] = hcomb(y[e]["lb"], lb[2:225])
-        y[e]["ub"] = hcomb(y[e]["ub"], ub[2:225])
+    lb, ub, t = [-Inf], [+Inf], [0.0]
+    for i in eachindex(history)
+        push!(lb, max(lb[end], history[i]["lb"]))
+        push!(ub, min(ub[end], abs(history[i]["ub"])))
+        push!(t, history[i]["t"]["timestamp"] - t0)
     end
+    for i in 1:(xmax-length(history))
+        push!(lb, lb[end])
+        push!(ub, ub[end])
+        push!(t, t[end])
+    end
+
+    y[n]["lb"] = hcomb(y[n]["lb"], lb[2:(xmax+1)])
+    y[n]["ub"] = hcomb(y[n]["ub"], ub[2:(xmax+1)])
+    y[n]["t"] = hcomb(y[n]["t"], t[2:(xmax+1)])
 end
 
 # Average results.
-if length(RUNS) > 1
-    for e in examples
-        y[e]["lb"] = vec(mean(y[e]["lb"]; dims = 2))
-        y[e]["ub"] = vec(mean(y[e]["ub"]; dims = 2))
-    end
+for e in keys(y)
+    y[e]["lb"] isa Vector && continue
+    y[e]["lb"] = vec(mean.(y[e]["lb"]; dims = 2))
+    y[e]["ub"] = vec(mean.(y[e]["ub"]; dims = 2))
+    y[e]["t"] = vec(mean.(y[e]["t"]; dims = 2))
 end
 
-# Get min/max bounds.
-ymin = minimum(minimum(y[e]["lb"]) for e in examples)
-ymax = maximum(maximum(y[e]["ub"]) for e in examples)
-xmin = 1
-xmax = maximum(length(y[e]["lb"]) for e in examples)
+# Prepare per iteration timings.
+tmax = maximum([e["t"][end] for e in values(y)])
+tbase = y[1]["t"][end] / tmax
+yt = Dict()
+for e in keys(y)
+    xt = 1:1000
+    yt[e] = Dict("t" => zeros(1000), "lb" => zeros(1000), "ub" => zeros(1000))
+    for t in xt
+        yt[e]["t"][t] = t / 1000.0 * 100.0
+        idx = findlast(x -> x <= t / 1000.0 * tmax, y[e]["t"])
+        yt[e]["lb"][t] = y[e]["lb"][idx]
+        yt[e]["ub"][t] = y[e]["ub"][idx]
+    end
+end
 
 # Fill with average after termination due to convergence.
-for e in examples
-    if length(y[e]["lb"]) < xmax
-        avg = (y[e]["lb"][end] + y[e]["ub"][end]) / 2
-        filler = fill(avg, xmax - length(y[e]["lb"]))
-        y[e]["lb"] = vcat(y[e]["lb"], filler)
-        y[e]["ub"] = vcat(y[e]["ub"], filler)
-    end
-end
+# for e in examples
+#     if length(y[e]["lb"]) < xmax
+#         avg = (y[e]["lb"][end] + y[e]["ub"][end]) / 2
+#         filler = fill(avg, xmax - length(y[e]["lb"]))
+#         y[e]["lb"] = vcat(y[e]["lb"], filler)
+#         y[e]["ub"] = vcat(y[e]["ub"], filler)
+#     end
+# end
 
 # Plot.
-function make_plot(ex)
-    x = xmin:xmax
+function make_plot(cx, cy, ex, xaxt)
     colors = ["#0026ff", "#ff4800", "#ffa480"]
     legend_entries = Dict(
-        "ex1" => "baseline",
-        "ex2" => "bounded variables",
-        "ex3" => "baseline",
-        "ex4" => "bounded variables",
-        "ex5" => "baseline",
-        "ex6" => "bounded variables",
+        1 => "baseline",
+        2 => "bounded variables",
+        3 => "baseline",
+        4 => "bounded variables",
+        5 => "baseline",
+        6 => "bounded variables",
     )
 
     traces = Vector{PlotlyJS.GenericTrace}()
+    annotations = []
+    ax = 0
+
     push!(
         traces,
         scatter(;
-            x = x,
-            y = fill(2.23922483671398e7, length(x)),
+            x = cx,
+            y = fill(2.23922483671398e7, length(cx)),
             mode = "lines",
             name = "target",
             line = PlotlyJS.attr(; color = "black", dash = "dash"),
@@ -87,20 +106,37 @@ function make_plot(ex)
     )
     for (i, e) in enumerate(ex)
         color = colors[i]
-        x = xmin:xmax
-        push!(traces, scatter(; x = x, y = y[e]["lb"], mode = "lines", name = legend_entries[e], line_color = color))
-        push!(traces, scatter(; x = x, y = y[e]["ub"], mode = "lines", showlegend = false, line_color = color))
+        push!(traces, scatter(; x = cx, y = cy[e]["lb"], mode = "lines", name = legend_entries[e], line_color = color))
+        push!(traces, scatter(; x = cx, y = cy[e]["ub"], mode = "lines", showlegend = false, line_color = color))
+
+        cidx = findfirst((cy[e]["ub"] .- cy[e]["lb"]) ./ cy[e]["ub"] .<= 1e-2)
+        cidxy = log10((cy[e]["ub"][cidx] .+ cy[e]["lb"][cidx]) / 2)
+
+        push!(
+            annotations,
+            PlotlyJS.attr(;
+                x = cx[cidx],
+                y = cidxy,
+                ax = 0,
+                ay = 0,
+                text = "<b>×</b>",
+                arrowcolor = color,
+                font = PlotlyJS.attr(; color = color, size = 20),
+            ),
+        )
+        ax += 1
     end
 
     return plot(
         traces,
         Layout(;
+            annotations = annotations,
             title = "",
-            xaxis_title = "iteration",
+            xaxis_title = "% of maximum $(xaxt)",
             yaxis_title = "best objective bounds",
             yaxis_type = "log",
             xaxis = PlotlyJS.attr(;
-                range = [1, xmax],
+                range = [1, cx[end]],
                 showgrid = true,
                 zeroline = false,
                 showline = true,
@@ -112,7 +148,7 @@ function make_plot(ex)
                 gridcolor = "lightgray",
             ),
             yaxis = PlotlyJS.attr(;
-                range = [0, log10(ymax) * 1.05],
+                range = [2, 14],
                 showgrid = true,
                 zeroline = false,
                 showline = true,
@@ -139,6 +175,35 @@ function make_plot(ex)
     )
 end
 
-savefig(make_plot(examples[1:2]), joinpath(VIZ_DIR, "simplex.png"); width = 450, height = 550)
-savefig(make_plot(examples[3:4]), joinpath(VIZ_DIR, "ipm.png"); width = 450, height = 550)
-savefig(make_plot(examples[5:6]), joinpath(VIZ_DIR, "stabilized.png"); width = 450, height = 550)
+savefig(
+    make_plot((1:250) ./ 2.5, y, 1:2, "iterations"),
+    joinpath(VIZ_DIR, "iter_0_simplex.png");
+    width = 450,
+    height = 550,
+)
+savefig(make_plot((1:250) ./ 2.5, y, 3:4, "iterations"), joinpath(VIZ_DIR, "iter_1_ipm.png"); width = 450, height = 550)
+savefig(
+    make_plot((1:250) ./ 2.5, y, 5:6, "iterations"),
+    joinpath(VIZ_DIR, "iter_2_stabilized.png");
+    width = 450,
+    height = 550,
+)
+
+savefig(
+    make_plot((1:1000) ./ tbase ./ 10.0, yt, 1:2, "time"),
+    joinpath(VIZ_DIR, "time_0_simplex.png");
+    width = 450,
+    height = 550,
+)
+savefig(
+    make_plot((1:1000) ./ tbase ./ 10.0, yt, 3:4, "time"),
+    joinpath(VIZ_DIR, "time_1_ipm.png");
+    width = 450,
+    height = 550,
+)
+savefig(
+    make_plot((1:1000) ./ tbase ./ 10.0, yt, 5:6, "time"),
+    joinpath(VIZ_DIR, "time_2_stabilized.png");
+    width = 450,
+    height = 550,
+)
