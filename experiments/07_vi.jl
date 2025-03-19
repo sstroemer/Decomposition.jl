@@ -90,13 +90,8 @@ attr = Dict(
     :ex0 => Dict(:τ => 0.00, :merge_first => false, :ipm => true, :feasibility => false),
     :ex1 => Dict(:τ => 0.00, :merge_first => false, :ipm => true),
     :ex2 => Dict(:τ => 0.01, :merge_first => false, :ipm => true),
-    :ex3 => Dict(:τ => 0.01, :merge_first => false, :ipm => false),
+    :ex3 => Dict(:τ => 0.01, :merge_first => true, :ipm => true),
     :ex4 => Dict(:τ => 0.01, :merge_first => true, :ipm => false),
-    
-    # :ex3 => Dict(:τ => 0.10, :merge_first => false),
-    # :ex4 => Dict(:τ => 0.00, :merge_first => true),
-    # :ex5 => Dict(:τ => 0.01, :merge_first => true),
-    # :ex6 => Dict(:τ => 0.10, :merge_first => true),
 )
 
 exp_idx = length(ARGS) == 1 ? ARGS[1] : "1"

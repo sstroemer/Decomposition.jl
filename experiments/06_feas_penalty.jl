@@ -62,13 +62,12 @@ jump_model = jump_model_from_file("national_scale_8760.mps")
 i = length(ARGS) == 1 ? parse(Int64, ARGS[1]) : 7
 
 println("Running experiment: $(EXPERIMENT) >> $(EXPERIMENT_UUID) >> $(π)")
-model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 8760, n = 24, penalty = 10.0^i)
 
+model_gurobi = experiment(jump_model, () -> Gurobi.Optimizer(GRB_ENV); T = 8760, n = 24, penalty = 10.0^i)
 max_slack = max(
     maximum(maximum(abs.(JuMP.value.(m[:z_neg]))) for m in Benders.subs(model_gurobi)),
     maximum(maximum(abs.(JuMP.value.(m[:z_pos]))) for m in Benders.subs(model_gurobi)),
 )
-
 # Cut off if we encounter a slack of at least 1 (MW / ...).
 # Setting this too low may otherwise wrongfully trigger for a 0.01 convergence tolerance.
 if max_slack >= 1.0
@@ -76,8 +75,8 @@ if max_slack >= 1.0
     exit()
 end
 
-model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 24, penalty = 10.0^i)
-
-# Write results.
+# Write out Gurobi result, if HiGHS fails afterwards and we end.
 JSON3.write(joinpath(RESULT_DIR, "g_timer_$(i).json"), TimerOutputs.todict(model_gurobi.timer); allow_inf = true)
+
+model_highs = experiment(jump_model, () -> HiGHS.Optimizer(); T = 8760, n = 24, penalty = 10.0^i)
 JSON3.write(joinpath(RESULT_DIR, "h_timer_$(i).json"), TimerOutputs.todict(model_highs.timer); allow_inf = true)
