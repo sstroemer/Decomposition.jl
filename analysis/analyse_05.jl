@@ -48,9 +48,9 @@ end
 # Average results.
 for e in keys(y)
     y[e]["lb"] isa Vector && continue
-    y[e]["lb"] = vec(mean.(y[e]["lb"]; dims = 2))
-    y[e]["ub"] = vec(mean.(y[e]["ub"]; dims = 2))
-    y[e]["t"] = vec(mean.(y[e]["t"]; dims = 2))
+    y[e]["lb"] = vec(mean(y[e]["lb"]; dims = 2))
+    y[e]["ub"] = vec(mean(y[e]["ub"]; dims = 2))
+    y[e]["t"] = vec(mean(y[e]["t"]; dims = 2))
 end
 
 # Prepare per iteration timings.
@@ -110,7 +110,11 @@ function make_plot(cx, cy, ex, xaxt)
         push!(traces, scatter(; x = cx, y = cy[e]["lb"], mode = "lines", name = legend_entries[e], line_color = color))
         push!(traces, scatter(; x = cx, y = cy[e]["ub"], mode = "lines", showlegend = false, line_color = color))
 
-        cidx = findfirst((cy[e]["ub"] .- cy[e]["lb"]) ./ cy[e]["ub"] .<= 1e-2)
+        gap = (cy[e]["ub"] .- cy[e]["lb"]) ./ cy[e]["ub"]
+        cidx = findfirst(gap .<= 1e-2)
+
+        isnothing(cidx) && continue
+
         cidxy = log10((cy[e]["ub"][cidx] .+ cy[e]["lb"][cidx]) / 2)
 
         push!(
