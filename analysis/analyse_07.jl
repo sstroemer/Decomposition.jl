@@ -44,9 +44,11 @@ for f in files
     end
     y[e]["sub_p"] += par[1]
     y[e]["sub_s"] += sum(v[:time_ns] for (k, v) in sit)
-    
+
     y[e]["cnt"] += 1
 end
+
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments = length(y) avg_runs = length(files) / length(y)
 
 # Average results (over all runs [already included in baseline], then down to "per iteration"), normalize to baseline.
 baseline_iter = y[0]["iter"] / 100.0

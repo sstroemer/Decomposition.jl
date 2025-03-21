@@ -45,6 +45,8 @@ for f in files
     y[n]["t"] = hcomb(y[n]["t"], t[2:(xmax+1)])
 end
 
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments = length(y) avg_runs = length(files) / length(y)
+
 # Average results.
 for e in keys(y)
     y[e]["lb"] isa Vector && continue

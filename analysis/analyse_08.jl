@@ -67,6 +67,8 @@ for f in files
     y[i]["cnt"] += 1
 end
 
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments = length(y) avg_runs = length(files) / length(y)
+
 exp_tol = sort(collect(keys(y)))
 tol = vcat([0.0], 10.0 .^ (-exp_tol[2:end]))
 
@@ -134,7 +136,7 @@ function make_plot(traces, layout)
 end
 
 x = vcat(["default (1e-6)"], ["1e-$(i)" for i in exp_tol[2:end]])
-ymax = 300
+ymax = 175
 
 # Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()

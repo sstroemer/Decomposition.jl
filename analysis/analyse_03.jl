@@ -9,6 +9,9 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
+COLORS = ["#9c0000ff", "#009c00ff", "#00009cff"]
+COLORS_T = ["#9c000077", "#009c0077", "#00009c77"]
+
 PARALLELIZATION = 16
 y = Dict()
 y_keys = ["iter", "main", "sub_p", "sub_s", "cnt"]
@@ -46,6 +49,8 @@ for f in files
 
     y[e]["cnt"] += 1
 end
+
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments = length(y) avg_runs = length(files) / length(y)
 
 examples = collect(keys(y))
 
@@ -116,7 +121,7 @@ end
 names = Dict(e => e[2] == 0 ? "never" : "$(e[2])" for e in examples)
 
 for alg in ["ipm", "simplex"]
-    exs = sort([e for e in examples if (e[3] ⊻ (alg == "simplex"))]; by = e -> e[2], rev = false)
+    exs = sort([e for e in examples if (e[3] ⊻ (alg == "simplex")) && y[e]["cnt"] > 0]; by = e -> e[2], rev = false)
     yn = [names[e] for e in exs]
 
     traces = Vector{PlotlyJS.GenericTrace}()
@@ -132,13 +137,13 @@ for alg in ["ipm", "simplex"]
                     alg == "ipm" ? vcat(0, [y[e]["iter"] for e in exs if e != e_0]) :
                     [y[e]["iter"] for e in exs if e != e_0],
                 x = yn,
-                marker = !ib ? PlotlyJS.attr(; color = "#0f48aa") :
+                marker = !ib ? PlotlyJS.attr(; color = COLORS[3]) :
                          PlotlyJS.attr(;
-                    color = "#0f48aa",
+                    color = COLORS[3],
                     pattern_fillmode = "overlay",
-                    pattern_fgcolor = "#ffffff",
-                    pattern_bgcolor = "#0f48aa",
-                    pattern_shape = "x",
+                    pattern_fgcolor = "#ffffff00",
+                    pattern_bgcolor = COLORS[3],
+                    pattern_shape = ".",
                 ),
                 orientation = "v",
                 name = "iterations",
@@ -155,13 +160,13 @@ for alg in ["ipm", "simplex"]
                     alg == "ipm" ? vcat(0, [y[e]["main"] + y[e]["sub_s"] for e in exs if e != e_0]) :
                     [y[e]["main"] + y[e]["sub_s"] for e in exs if e != e_0],
                 x = yn,
-                marker = !ib ? PlotlyJS.attr(; color = "#458a0077") :
+                marker = !ib ? PlotlyJS.attr(; color = COLORS_T[2]) :
                          PlotlyJS.attr(;
-                    color = "#458a0077",
+                    color = COLORS_T[2],
                     pattern_fillmode = "overlay",
-                    pattern_fgcolor = "#ffffff",
-                    pattern_bgcolor = "#458a0077",
-                    pattern_shape = "x",
+                    pattern_fgcolor = "#ffffff00",
+                    pattern_bgcolor = COLORS_T[2],
+                    pattern_shape = ".",
                 ),
                 orientation = "v",
                 name = "sub (serial)",
@@ -181,13 +186,13 @@ for alg in ["ipm", "simplex"]
                 orientation = "v",
                 name = "sub (parallel)",
                 offsetgroup = 2,
-                marker = !ib ? PlotlyJS.attr(; color = "#458a00") :
+                marker = !ib ? PlotlyJS.attr(; color = COLORS[2]) :
                          PlotlyJS.attr(;
-                    color = "#458a00",
+                    color = COLORS[2],
                     pattern_fillmode = "overlay",
-                    pattern_fgcolor = "#ffffff",
-                    pattern_bgcolor = "#458a00",
-                    pattern_shape = "x",
+                    pattern_fgcolor = "#ffffff00",
+                    pattern_bgcolor = COLORS[2],
+                    pattern_shape = ".",
                 ),
                 legendgrouptitle = PlotlyJS.attr(; text = "model time"),
                 legendgroup = "time",
@@ -201,13 +206,13 @@ for alg in ["ipm", "simplex"]
                     alg == "ipm" ? vcat(0, [y[e]["main"] for e in exs if e != e_0]) :
                     [y[e]["main"] for e in exs if e != e_0],
                 x = yn,
-                marker = !ib ? PlotlyJS.attr(; color = "#b85c5c") :
+                marker = !ib ? PlotlyJS.attr(; color = COLORS[1]) :
                          PlotlyJS.attr(;
-                    color = "#b85c5c",
+                    color = COLORS[1],
                     pattern_fillmode = "overlay",
-                    pattern_fgcolor = "#ffffff",
-                    pattern_bgcolor = "#b85c5c",
-                    pattern_shape = "x",
+                    pattern_fgcolor = "#ffffff00",
+                    pattern_bgcolor = COLORS[1],
+                    pattern_shape = ".",
                 ),
                 orientation = "v",
                 name = "main",

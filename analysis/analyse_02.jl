@@ -8,6 +8,8 @@ RUN_DIR = normpath(RESULT_DIR, only(filter(it -> startswith(it, "$(EXPERIMENT_NR
 RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 
+COLORS = ["#00009cff", "#9c0000ff"]
+
 PARALLELIZATION = 16
 y = Dict()
 y_keys = ["iter", "tmain_opt", "tmain_aux", "tsub_opt_ser", "tsub_aux_ser", "tsub_opt_par", "tsub_aux_par"]
@@ -50,6 +52,8 @@ for f in files
     push!(y[n]["tsub_opt_par"], par[1]["opt"])
     push!(y[n]["tsub_aux_par"], par[1]["aux"])
 end
+
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments = length(y) avg_runs = length(files) / length(y)
 
 # Average results and convert to seconds.
 for n in keys(y)

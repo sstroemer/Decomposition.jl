@@ -44,6 +44,11 @@ for f in files
     y[s][i]["cnt"] += 1
 end
 
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments_g = length(y["g"]) avg_runs_g =
+    length(collect(f for f in files if contains(f[1], "g_timer"))) / length(y["g"])
+@info "EXPERIMENT $(EXPERIMENT_NR)" nof_experiments_h = length(y["h"]) avg_runs_h =
+    length(collect(f for f in files if contains(f[1], "h_timer"))) / length(y["h"])
+
 # Average results.
 for solver in ["h", "g"]
     for i in keys(y[solver])
