@@ -9,6 +9,9 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
+COLORS = ["#9c0000ff", "#009c00ff", "#00009cff"]
+COLORS_T = ["#9c000077", "#009c0077", "#00009c77"]
+
 PARALLELIZATION = 16
 y = Dict()
 y_keys = ["iter", "main", "sub_p", "sub_s", "cnt"]
@@ -121,8 +124,8 @@ xs = ["1e$(i)" for i in x]
 
 # Plot iterations.
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(traces, bar(; x = xs, y = [y["g"][i]["iter"] for i in x], name = "Gurobi v12.0.1", marker_color = "#9c0000"))
-push!(traces, bar(; x = xs, y = [y["h"][i]["iter"] for i in x], name = "HiGHS v1.9.0", marker_color = "#39009c"))
+push!(traces, bar(; x = xs, y = [y["g"][i]["iter"] for i in x], name = "Gurobi v12.0.1", marker_color = COLORS[3]))
+push!(traces, bar(; x = xs, y = [y["h"][i]["iter"] for i in x], name = "HiGHS v1.9.0", marker_color = COLORS_T[3]))
 savefig(
     make_plot(traces, (xaxis_title = "feasibility penalty", yaxis_title = "iterations (%)")),
     joinpath(VIZ_DIR, "iterations.png");
@@ -132,18 +135,18 @@ savefig(
 
 # Plot time.
 traces = Vector{PlotlyJS.GenericTrace}()
-push!(
-    traces,
-    bar(;
-        x = xs,
-        y = [y["g"][i]["main"] + y["g"][i]["sub_s"] for i in x],
-        offsetgroup = 2,
-        legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
-        legendgroup = "gurobi",
-        name = "sub (serial)",
-        marker_color = "#9c7a68",
-    ),
-)
+# push!(
+#     traces,
+#     bar(;
+#         x = xs,
+#         y = [y["g"][i]["main"] + y["g"][i]["sub_s"] for i in x],
+#         offsetgroup = 2,
+#         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
+#         legendgroup = "gurobi",
+#         name = "sub (serial)",
+#         marker_color = COLORS_T[2],
+#     ),
+# )
 push!(
     traces,
     bar(;
@@ -153,7 +156,7 @@ push!(
         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
         legendgroup = "gurobi",
         name = "sub (parallel)",
-        marker_color = "#9c3600",
+        marker_color = COLORS[2],
     ),
 )
 push!(
@@ -165,22 +168,22 @@ push!(
         legendgrouptitle = PlotlyJS.attr(; text = "Gurobi v12.0.1"),
         legendgroup = "gurobi",
         name = "main",
-        marker_color = "#9c0000",
+        marker_color = COLORS[1],
     ),
 )
 
-push!(
-    traces,
-    bar(;
-        x = xs,
-        y = [y["h"][i]["main"] + y["h"][i]["sub_s"] for i in x],
-        offsetgroup = 1,
-        legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
-        legendgroup = "highs",
-        name = "sub (serial)",
-        marker_color = "#8d689c",
-    ),
-)
+# push!(
+#     traces,
+#     bar(;
+#         x = xs,
+#         y = [y["h"][i]["main"] + y["h"][i]["sub_s"] for i in x],
+#         offsetgroup = 1,
+#         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
+#         legendgroup = "highs",
+#         name = "sub (serial)",
+#         marker_color = COLORS_T[3],
+#     ),
+# )
 push!(
     traces,
     bar(;
@@ -190,7 +193,7 @@ push!(
         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
         legendgroup = "highs",
         name = "sub (parallel)",
-        marker_color = "#6f009c",
+        marker_color = COLORS_T[2],
     ),
 )
 push!(
@@ -202,7 +205,7 @@ push!(
         legendgrouptitle = PlotlyJS.attr(; text = "HiGHS v1.9.0"),
         legendgroup = "highs",
         name = "main",
-        marker_color = "#39009c",
+        marker_color = COLORS_T[1],
     ),
 )
 

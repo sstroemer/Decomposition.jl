@@ -9,6 +9,9 @@ RUNS = filter(x -> isdir(joinpath(RUN_DIR, x)), readdir(RUN_DIR))
 VIZ_DIR = mkpath(replace(RUN_DIR, "experiments" => "analysis"))
 hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 
+COLORS = ["#9c0000ff", "#009c00ff", "#00009cff"]
+COLORS_T = ["#9c000077", "#009c0077", "#00009c77"]
+
 y = Dict()
 y_keys = ["lb", "ub", "t"]
 xmax = 250
@@ -83,7 +86,7 @@ end
 
 # Plot.
 function make_plot(cx, cy, ex, xaxt)
-    colors = ["#0026ff", "#ff4800", "#ffa480"]
+    colors = [COLORS[1], COLORS[3]]
     legend_entries = Dict(
         1 => "baseline",
         2 => "bounded variables",

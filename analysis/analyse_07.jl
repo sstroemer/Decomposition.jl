@@ -12,6 +12,9 @@ hcomb(a, b) = isnothing(a) ? b : hcat(a, b)
 y = Dict()
 y_keys = ["iter", "main", "sub_p", "sub_s", "cnt"]
 
+COLORS = ["#9c0000ff", "#009c00ff", "#00009cff"]
+COLORS_T = ["#9c000077", "#009c0077", "#00009c77"]
+
 PARALLELIZATION = 16
 
 files = []
@@ -123,7 +126,7 @@ push!(
     bar(;
         x = [y[e]["iter"] for e in exs],
         y = yn,
-        marker_color = "#0f48aa",
+        marker_color = COLORS[3],
         orientation = "h",
         name = "iterations",
         offsetgroup = 1,
@@ -136,7 +139,7 @@ push!(
     bar(;
         x = [y[e]["main"] + y[e]["sub_s"] for e in exs],
         y = yn,
-        marker_color = "#7ea15c",
+        marker_color = COLORS_T[2],
         orientation = "h",
         name = "sub (serial)",
         offsetgroup = 2,
@@ -149,7 +152,7 @@ push!(
     bar(;
         x = [y[e]["main"] + y[e]["sub_p"] for e in exs],
         y = yn,
-        marker_color = "#458a00",
+        marker_color = COLORS[2],
         orientation = "h",
         name = "sub (parallel)",
         offsetgroup = 2,
@@ -162,7 +165,7 @@ push!(
     bar(;
         x = [y[e]["main"] for e in exs],
         y = yn,
-        marker_color = "#b85c5c",
+        marker_color = COLORS[1],
         orientation = "h",
         name = "main",
         offsetgroup = 2,
