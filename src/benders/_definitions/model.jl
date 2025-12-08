@@ -1,4 +1,4 @@
-@kwdef struct DecomposedModel9 <: _ExtModDecomposition.AbstractDecomposedModel
+@kwdef struct DecomposedModel <: _ExtModDecomposition.AbstractDecomposedModel
     jump_model::JuMP.Model
     annotator::_ExtModDecomposition.AbstractGeneralAnnotator
 
@@ -53,6 +53,3 @@
     _cache::Dict{Symbol, Any} = Dict{Symbol, Any}()
     _defaults::Set{AbstractGeneralAttribute} = _ATTRIBUTE_DEFAULTS
 end
-
-# TODO: clean this up
-DecomposedModel = DecomposedModel9
