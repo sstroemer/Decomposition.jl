@@ -55,3 +55,12 @@ out/
 *.nl
 *.mof
 *.mof.json
+
+# Dev. model & annotations directories.
+models/
+annotations/
+
+# Ignore development scripts, data, etc.
+/*.jl
+/*.zip
+/*.mps
